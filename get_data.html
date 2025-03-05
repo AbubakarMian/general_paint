@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demand Base Scraper</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="app.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <h2>Demand Base Data Scraper</h2>
+        <div id="toastContainer" class="position-fixed top-0 start-0 p-3" style="z-index: 1055; width: 300px;">
+            <div id="infoToast" class="toast align-items-center text-bg-success border-0 shadow" role="alert"
+                aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body" id="toastContent">
+                        <!-- Toast content will be updated dynamically -->
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                        aria-label="Close"></button>
+                </div>
+            </div>
+        </div>
+
+        <form id="scraperForm" class="mt-4">
+            <div id="loadingStatus"></div>
+            <div class="mb-3">
+                <label for="urlInput" class="form-label">Enter URL:</label>
+                <input type="text" id="urlInput" class="form-control"
+                    value="https://web.demandbase.com/sales/saved?flow=saved-search&searchId=475215&searchName=China%201#results"
+                    placeholder="https://web.demandbase.com/sales/saved?flow=saved-search&searchId=475215&searchName=China%201#results" required>
+            </div>
+            <div class="btn_area">
+
+                <button type="button" id="startButton" class="btn btn-primary">Start Search</button>
+                <button type="button" id="stopButton" style="display: none;" class="btn btn-danger">Stop Search</button>
+                <button id="downloadCsvButton" style="display: none;" class="btn btn-info">Download CSV</button>
+            </div>
+
+        </form>
+
+        <div id="result" class="mt-4"></div>
+    </div>
+
+    <table id="dataTable" class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Title</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Home</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <div class="modal fade" id="loadingModal" data-bs-backdrop="static" tabindex="-1"
+        aria-labelledby="loadingModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loadingModalLabel">Loading In Progress</h5>
+                    <button type="button" style="display: none;" id="closeLoadingbtn" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="loadingMessage">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        let eventSource;
+        let isStopped = false;
+        let uniqueRecords = new Set();
+        let table_data = [];
+
+
+
+        window.addEventListener("beforeunload", () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+
+        document.getElementById('startButton').addEventListener('click', () => {
+            const url = document.getElementById("urlInput").value;
+
+            if (url == '') {
+                return;
+            }
+
+            $("#startButton").css('display', 'none');
+            $("#stopButton").css('display', 'block');
+            $("#downloadCsvButton").css('display', 'none');
+
+            const tableBody = document.querySelector("#dataTable tbody");
+
+            if (eventSource && !isStopped) return; // Prevent starting if already running
+
+            isStopped = false;
+            // tableBody.innerHTML = ''; 
+            // eventSource = new EventSource(`https://node.hatinco.com/demand_base?url=${encodeURIComponent(url)}`);
+            eventSource = new EventSource(`http://localhost:5003/demand_base?url=${encodeURIComponent(url)}`);
+            eventSource.onmessage = (event) => {
+
+                if (event.data === "[loggingIn]") {
+                    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+                    // $('#loadingStatus').html('Loading loggin In ...');
+                    $('#loadingMessage').text('Signing In...');
+                    loadingModal.toggle();
+                    return;
+                }
+                if (event.data === "[loadingURL]") {
+                    $('#loadingMessage').text('Loading URL...');
+
+                    // $('#loadingStatus').html('Loading URL ...');
+                    return;
+                }
+                if (event.data === "[DONE]") {
+                    eventSource.close();
+                    return;
+                }
+                // $('#loadingStatus').html('');
+
+                $('#closeLoadingbtn').click();
+
+                const rowData = JSON.parse(event.data);
+                let uniqueKey = rowData.uniqueKey;
+                if (!uniqueRecords.has(uniqueKey)) {
+                    uniqueRecords.add(uniqueKey);
+                    table_data = {
+                        name: rowData.name, title: rowData.title,
+                        email: rowData.email, phone: rowData.phone, home: rowData.home
+                    };
+                    const newRow = document.createElement("tr");
+                    newRow.innerHTML = `
+                    <td>${rowData.name}</td>
+                    <td>${rowData.title}</td>
+                    <td>${rowData.email}</td>
+                    <td>${rowData.phone}</td>
+                    <td>${rowData.home}</td>`;
+                    tableBody.appendChild(newRow);
+                    const toastContent = `Added: Name: ${rowData.name}, Title: ${rowData.title}, Email: ${rowData.email}`;
+                    document.getElementById('toastContent').innerText = toastContent;
+
+                    const infoToast = new bootstrap.Toast(document.getElementById('infoToast'));
+                    infoToast.show();
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error("Error receiving data:", error);
+                eventSource.close();
+            };
+        });
+
+
+        document.getElementById('stopButton').addEventListener('click', async () => {
+            $("#startButton").css('display', 'block');
+            $("#stopButton").css('display', 'none');
+            $("#downloadCsvButton").css('display', 'block');
+
+            if (eventSource) {
+                isStopped = true;
+                eventSource.close();
+                eventSource = null;
+                await fetch('http://localhost:5003/stop_scraping', { method: 'GET' });
+                console.log("Scraping stopped by the user.");
+            }
+        });
+
+        document.getElementById('downloadCsvButton').addEventListener('click', (event) => {
+            $("#stopButton").click();
+            event.preventDefault();
+            const table = document.querySelector("#dataTable");
+            const rows = table.querySelectorAll('tr');
+            const csvData = [];
+
+            // Loop through all rows and cells to extract data
+            rows.forEach((row, index) => {
+                const rowData = [];
+                const cells = row.querySelectorAll('td, th');
+
+                cells.forEach(cell => {
+                    rowData.push(cell.innerText.trim());
+                });
+
+                if (rowData.length > 0) {
+                    csvData.push(rowData.join(','));
+                }
+            });
+
+            // Create a CSV string
+            const csvString = csvData.join('\n');
+
+            // Create a Blob with the CSV data and trigger a download
+            const blob = new Blob([csvString], { type: 'text/csv' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'data.csv';
+            link.click();
+        });
+    </script>
+</body>
+
+</html>

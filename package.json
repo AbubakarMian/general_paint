@@ -1,0 +1,21 @@
+{
+  "name": "demand_base",
+  "version": "1.0.0",
+  "description": "",
+  "main": "demand_base.js",
+  "scripts": {
+    "start": "node demand_base.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start-debug": "DEBUG=pw:browser* node demand_base.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "canvas": "^3.0.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "playwright": "^1.47.2",
+    "xlsx": "^0.18.5"
+  }
+}

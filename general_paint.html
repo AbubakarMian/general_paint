@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>General Paint Scraper</title>
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/app.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <h5 class="server_error">Something went wrong! Please close the terminal and browser if they are open, then
+            restart the application.</h5>
+        <h2>General Paint Data Scraper</h2>
+
+        <div id="toastContainer" class="position-fixed top-0 start-0 p-3" style="z-index: 1055; width: 300px;">
+            <!-- Success Toast -->
+            <div id="infoToast" class="toast align-items-center text-bg-success border-0 shadow" role="alert"
+                aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body" id="toastContent"></div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                        aria-label="Close"></button>
+                </div>
+            </div>
+            <!-- Failure Toast -->
+            <div id="errorToast" class="toast align-items-center text-bg-danger border-0 shadow" role="alert"
+                aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body" id="errorToastContent"></div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                        aria-label="Close"></button>
+                </div>
+            </div>
+        </div>
+
+        <form id="scraperForm" class="mt-4">
+
+            <div class="btn_area btn_area_center">
+                <input type="text" id="start_page" placeholder="Start Scrapping from page" style="display: none;"  name="start_page" value="1" min="1">
+                <button type="button" id="loadButton" class="btn btn-primary">Open</button>
+                <button type="button" id="startButton" style="display: none;" class="btn btn-primary">Start
+                    Search</button>
+                <button type="button" id="stopButton" style="display: none;" class="btn btn-danger">Stop Search</button>
+                <button id="downloadCsvButton" onclick="downloadData(this)" style="display: none;"  class="btn btn-info">Download CSV</button>
+                <button id="clear_previous_data" class="btn btn-info" style="display: none;"  onclick="clear_previous_record()">Clear Previous Data </button>
+            </div>
+        </form>
+
+        <div class="record-info" style="display: none;">
+            <div>
+                <div>Total Records</div>
+                <span id="total">0</span>
+            </div>
+            <div>
+                <div>Unique Records</div>
+                <span id="unique">0</span>
+            </div>
+            <div>
+                <div>Duplicate Records</div>
+                <span id="duplicate">0</span>
+            </div>
+            <div>
+                <div>Total pages scrapped</div>
+                <span id="pages_scraped">0</span>
+            </div>
+        </div>
+        <!-- Table Section -->
+        <table id="dataTable" style="display: none;" class="table mt-4">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Address</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <!-- Modal Section -->
+        <div class="modal fade" id="loadingModal" data-bs-backdrop="static" tabindex="-1"
+            aria-labelledby="loadingModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="loadingModalLabel">Loading In Progress</h5>
+                        <button type="button" style="display: none;" id="closeLoadingbtn" class="btn-close"
+                            data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="loadingMessage">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/bootstrap.bundle.min.js"></script>
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <script src="js/app_browser.js"></script>
+</body>
+
+</html>
