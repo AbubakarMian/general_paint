@@ -177,6 +177,7 @@ async function loadFromPage(url, limit, page_num, res) {
     const submitButtonSelector = '.btn.btn-success.btn-lg.mr-3';
     await Promise.all([
         page.click(submitButtonSelector),
+        // page.waitForNavigation(),
     ]);
 
     randomWaitTime = getRandomNumber(1500, 3500);
@@ -196,13 +197,11 @@ async function loadFromPage(url, limit, page_num, res) {
         });
     });
     console.log('containers_details 1', containers_details);
+
+    // Iterate through each element and click the button to load the iframe
     for (let i = 0; i < containers_details.length; i++) {
         const container = containers_details[i];
-        const containerHandles = await page.$$('#digital_formula > .root');
-        const hasMultitoneAccess = await containerHandles[i].$('.formula-multitone-access');
-        if(hasMultitoneAccess){
-            continue;
-        }
+
         // Get the button for the current element
         const buttons = await page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
         if (buttons[i]) {
@@ -216,27 +215,42 @@ async function loadFromPage(url, limit, page_num, res) {
                 state: 'visible',
                 timeout: 30000
             });
+
+            // Click the button
             console.log('Clicking button...');
             await buttons[i].click();
+
+            // Wait for the modal to appear
             console.log('Waiting for modal...');
             await page.waitForSelector('#formulaInfo.modal.fade.show', { timeout: 30000 });
+
+            // Wait for the iframe to load inside the modal
             const iframeSelector = `iframe[src^="/v2/search/formula-info?id="]`;
             console.log('Waiting for iframe...');
-            // await page.waitForSelector(iframeSelector, { timeout: 30000 });
+            await page.waitForSelector(iframeSelector, { timeout: 30000 });
 
             // Add a random wait time to ensure the iframe is fully loaded
             const randomWaitTime = getRandomNumber(3500, 5500);
             console.log(`Waiting for ${randomWaitTime}ms...`);
             await page.waitForTimeout(randomWaitTime);
+
+            // Get the iframe handle
             const iframeHandle = await page.$(iframeSelector);
             const iframeContent = await iframeHandle.contentFrame();
+
+            // Debugging: Log iframe content
             const iframeHTML = await iframeContent.evaluate(() => document.documentElement.outerHTML);
-            // console.log('Iframe HTML:', iframeHTML);
+            console.log('Iframe HTML:', iframeHTML);
+
+            // Ensure the iframe content is fully loaded and ready
+            console.log('Waiting for iframe content to be ready...');
             await iframeContent.waitForFunction(() => {
                 // Check if a specific element (e.g., .col-sm-5) is present and has content
                 const manufacturer = document.querySelector('.col-sm-5');
                 return manufacturer && manufacturer.innerText.trim() !== '';
             }, { timeout: 30000 });
+
+            // Extract data from the iframe
             console.log('Extracting data from iframe...');
             let iframeData = {};
             try {
@@ -246,11 +260,11 @@ async function loadFromPage(url, limit, page_num, res) {
                     const colorCode = document.querySelectorAll('.col-sm-5')[1]?.innerText || '';
                     const colorDescription = document.querySelectorAll('.col-sm-7')[0]?.innerText || '';
                     const year = document.querySelectorAll('.col-sm-6')[0]?.innerText || '';
-                    // const models = Array.from(document.querySelectorAll('#models tbody tr')).map(row => ({
-                    //     model: row.querySelector('td')?.innerText || '',
-                    //     startYear: row.querySelectorAll('td')[1]?.innerText || '',
-                    //     endYear: row.querySelectorAll('td')[2]?.innerText || ''
-                    // }));
+                    const models = Array.from(document.querySelectorAll('#models tbody tr')).map(row => ({
+                        model: row.querySelector('td')?.innerText || '',
+                        startYear: row.querySelectorAll('td')[1]?.innerText || '',
+                        endYear: row.querySelectorAll('td')[2]?.innerText || ''
+                    }));
                     const canvasWrapper = document.querySelector('#canvas_wrapper');
                     const backgroundColor = canvasWrapper ? window.getComputedStyle(canvasWrapper).backgroundColor : '';
 
@@ -259,27 +273,25 @@ async function loadFromPage(url, limit, page_num, res) {
                         colorCode,
                         colorDescription,
                         year,
-                        // models,
-                        // model: row.querySelector('td')?.innerText || '',
-                        // startYear: row.querySelectorAll('td')[1]?.innerText || '',
-                        // endYear: row.querySelectorAll('td')[2]?.innerText || '',
-                        // backgroundColor
+                        models,
+                        backgroundColor
                     };
                 });
             } catch (error) {
                 console.error('Error extracting data from iframe:', error);
-                // iframeData = {
-                //     manufacturer: iframeHTML.match(/<div class="col-sm-5">([^<]+)<\/div>/)?.[1]?.trim() || '',
-                //     colorCode: iframeHTML.match(/<div class="col-sm-5">([^<]+)<\/div>/g)?.[1]?.match(/<div class="col-sm-5">([^<]+)<\/div>/)?.[1]?.trim() || '',
-                //     colorDescription: iframeHTML.match(/<div class="col-sm-7">([^<]+)<\/div>/)?.[1]?.trim() || '',
-                //     year: iframeHTML.match(/<div class="col-sm-6">([^<]+)<\/div>/)?.[1]?.trim() || '',
-                //     models: Array.from(iframeHTML.matchAll(/<tr start="(\d+)" end="(\d+)">\s*<td>([^<]+)<\/td>\s*<td>([^<]+)<\/td>\s*<td>([^<]+)<\/td>\s*<\/tr>/g)).map(match => ({
-                //         model: match[3]?.trim() || '',
-                //         startYear: match[1]?.trim() || '',
-                //         endYear: match[2]?.trim() || ''
-                //     })),
-                //     backgroundColor: iframeHTML.match(/background-color:\s*([^;]+);/)?.[1]?.trim() || ''
-                // };
+                // Fallback: Use the iframe HTML to extract data
+                iframeData = {
+                    manufacturer: iframeHTML.match(/<div class="col-sm-5">([^<]+)<\/div>/)?.[1]?.trim() || '',
+                    colorCode: iframeHTML.match(/<div class="col-sm-5">([^<]+)<\/div>/g)?.[1]?.match(/<div class="col-sm-5">([^<]+)<\/div>/)?.[1]?.trim() || '',
+                    colorDescription: iframeHTML.match(/<div class="col-sm-7">([^<]+)<\/div>/)?.[1]?.trim() || '',
+                    year: iframeHTML.match(/<div class="col-sm-6">([^<]+)<\/div>/)?.[1]?.trim() || '',
+                    models: Array.from(iframeHTML.matchAll(/<tr start="(\d+)" end="(\d+)">\s*<td>([^<]+)<\/td>\s*<td>([^<]+)<\/td>\s*<td>([^<]+)<\/td>\s*<\/tr>/g)).map(match => ({
+                        model: match[3]?.trim() || '',
+                        startYear: match[1]?.trim() || '',
+                        endYear: match[2]?.trim() || ''
+                    })),
+                    backgroundColor: iframeHTML.match(/background-color:\s*([^;]+);/)?.[1]?.trim() || ''
+                };
             }
 
             // Merge the extracted data with the container object
@@ -287,36 +299,44 @@ async function loadFromPage(url, limit, page_num, res) {
                 ...container,
                 ...iframeData
             };
-            const closebuttons = await page.$$('#formulaInfo .close');
-            console.log('Number of close buttons:', closebuttons.length);
 
-            if (closebuttons.length > 0) {
-                console.log('Starting close loop...');
-                for (let i = 0; i < closebuttons.length; i++) {
-                    console.log(`Processing close button ${i}...`);
+            console.log('iframeData', iframeData);
 
-                    // Check if the close button is visible and enabled
-                    const isVisible = await closebuttons[i].isVisible();
-                    console.log(`Close button ${i} is visible:`, isVisible);
+            // Close the modal before moving to the next button
+            // Close the modal before moving to the next button
+            console.log('Closing modal...');
 
-                    const isEnabled = await closebuttons[i].isEnabled();
-                    console.log(`Close button ${i} is enabled:`, isEnabled);
+            // Wait for the modal to be fully visible
+            await page.waitForSelector('#formulaInfo.modal.fade.show', { state: 'visible', timeout: 30000 });
 
-                    if (isVisible && isEnabled) {
-                        // Scroll the button into view
-                        await closebuttons[i].scrollIntoViewIfNeeded();
-                        console.log('Close button scrolled into view.');
-
-                        // Click the button using evaluate
-                        await page.evaluate((button) => button.click(), closebuttons[i]);
-                        console.log('Close button clicked using evaluate.');
-                    } else {
-                        console.error(`Close button ${i} is not visible or enabled.`);
+            // Wait for the close button to be visible and enabled
+            await page.waitForSelector('#formulaInfo .close', {
+                state: 'visible',
+                timeout: 30000
+            });
+            await page.evaluate(() => {
+                const closeButton = document.querySelector('#formulaInfo .close');
+                if (closeButton) {
+                    closeButton.click();
+                } else {
+                    // Fallback: Trigger the modal close event manually
+                    const modal = document.querySelector('#formulaInfo');
+                    if (modal) {
+                        const modalInstance = bootstrap.Modal.getInstance(modal);
+                        if (modalInstance) {
+                            modalInstance.hide();
+                        }
                     }
                 }
-            } else {
-                console.error('No close buttons found!');
-            }
+            });
+
+            // Wait for the modal to disappear
+            console.log('Waiting for modal to disappear...');
+            await page.waitForSelector('#formulaInfo.modal.fade.show', { hidden: true, timeout: 30000 });
+
+            // Wait for any residual backdrop to disappear
+            console.log('Waiting for backdrop to disappear...');
+            await page.waitForSelector('.modal-backdrop.fade.show', { hidden: true, timeout: 30000 });
         }
     }
 
@@ -341,7 +361,7 @@ async function loadFromPage(url, limit, page_num, res) {
     //     let scraped_info = await loadNewPage(container_item.sid, container_item.familyId, new_page);
     //     data_arr.push(scraped_info);
     // }
-    
+    // await saveToExcel(data_arr, 'paint/paint.csv');
 
     ///end ttttt/
     // const containers = await page.$$('#digital_formula > .root'); // Get all parent divs with class 'root'
@@ -363,7 +383,7 @@ async function loadFromPage(url, limit, page_num, res) {
     // for (const el of await page.$$('#digital_formula > .root .btn.btn-bg-white.btn-secondary.mr-2.info-button')) {
     //     await el.click(); // Use Playwright's `click` method for interacting with the button
     // }
-    await saveToExcel(data_arr, 'paint/paint.csv');
+
     return;
 
 }
