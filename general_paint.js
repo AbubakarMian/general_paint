@@ -108,28 +108,46 @@ async function scrapFormaulaDetailsData(sid, id) {
     await new_page.goto(load_url);
     await new_page.waitForTimeout(randomWaitTime);
     console.log('step 2');
-    // return {};
     await new_page.waitForSelector('.container.mt-4');
-    await downloadSearchFamilyCanvasImage2(sid, id,new_page);
-    // await downloadCanvasImage(new_page);
+    await downloadSearchFamilyCanvasImage(sid, id, new_page);
     const data = await new_page.evaluate(() => {
-        const container = document.querySelector('.container.mt-4');
-        if (!container) return null;
-        const yearAndColor = container.querySelector('.formula-h2')?.innerHTML.trim() || null;
-        const tone = container.querySelector('td span.formula-h2')?.innerText.trim() || null;
-        const panelNo = container.querySelector('td span.formula-h2:nth-of-type(2)')?.innerText.trim() || null;
-        const details = container.querySelector('td:nth-child(3)')?.innerHTML.trim() || null;
-        const canvasWrapper = container.querySelector('#canvas_wrapper');
-        const bgColor = canvasWrapper?.style.backgroundColor || null;
+        // Extract year and color
+        const formulaH2 = document.querySelector('.formula-h2');
+        const yearColorText = formulaH2 ? formulaH2.innerText.trim() : '';
+        const [year, color] = yearColorText.split('\n').map((text) => text.trim());
+        const toneElement = Array.from(document.querySelectorAll('.formula-h1'))
+            .find(el => el.innerText.includes('Tone'))
+            ?.nextElementSibling;
+        const tone = toneElement ? toneElement.innerText.trim() : '';
+        const panelNoElement = Array.from(document.querySelectorAll('.formula-h1'))
+            .find(el => el.innerText.includes('Panel no.'))
+            ?.nextElementSibling;
+        const panelNo = panelNoElement ? panelNoElement.innerText.trim() : '';
+        const detailsElement = document.querySelector('.formula-info');
+        const details = detailsElement ? detailsElement.getAttribute('data-original-title') : '';
+        const canvasWrapper = document.querySelector('#canvas_wrapper');
+        let bgColor = '';
+
+        if (canvasWrapper) {
+            const canvas = canvasWrapper.querySelector('canvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.getImageData(0, 0, 1, 1).data; // Get pixel data from the top-left corner
+                bgColor = `rgba(${imageData[0]}, ${imageData[1]}, ${imageData[2]}, ${imageData[3] / 255})`;
+            } else {
+                bgColor = window.getComputedStyle(canvasWrapper).backgroundColor;
+            }
+        }
+
         return {
-            yearAndColor,
+            year,
+            color,
             tone,
             panelNo,
             details,
             bgColor,
         };
     });
-
     console.log('scrapFormaulaDetailsData Extracted Data:', data);
     if (data.bgColor) {
         const pngFileName = `paint/colors/${getRandomNumber(11111, 99999)}.png`;
@@ -139,7 +157,7 @@ async function scrapFormaulaDetailsData(sid, id) {
 
 }
 
-async function downloadSearchFamilyCanvasImage2(sid, id, canvas_page) {
+async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
     console.log('starting downloadSearchFamilyCanvasImage2 sid', sid);
     console.log('starting downloadSearchFamilyCanvasImage2 id', id);
 
