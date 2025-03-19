@@ -12,6 +12,7 @@ let browser = null;
 let context;
 let page = null;
 let new_page = null;
+let multitone_page = null;
 let interceptedRequests = [];
 const xlsx = require('xlsx');
 const { createCanvas } = require('canvas');
@@ -39,8 +40,14 @@ async function loadUrl() {
     new_page = await context.newPage();
     await new_page.goto('https://generalpaint.info/v2/site/login');
     await loginPage(new_page);
-    randomWaitTime = getRandomNumber(7500, 9500);
+    randomWaitTime = getRandomNumber(1500, 3500);
     await new_page.waitForTimeout(randomWaitTime);
+
+    multitone_page = await context.newPage();
+    await multitone_page.goto('https://generalpaint.info/v2/site/login');
+    // await loginPage(multitone_page);
+    // randomWaitTime = getRandomNumber(7500, 9500);
+    // await multitone_page.waitForTimeout(randomWaitTime);
 
 
 }
@@ -103,7 +110,7 @@ async function scrapFormaulaDetailsData(sid, id) {
     console.log('scrapFormaulaDetailsDataUrl', load_url);
     await new_page.goto(load_url);
     randomWaitTime = getRandomNumber(3500, 5500);
-    await new_page.goto(load_url);
+    // await new_page.goto(load_url);
     await new_page.waitForTimeout(randomWaitTime);
     console.log('step 2');
     await new_page.waitForSelector('.container.mt-4');
@@ -134,11 +141,15 @@ async function scrapFormaulaDetailsData(sid, id) {
             const tone = toneElement ? toneElement.innerText.trim() : '';
 
             // Extract panel number
-            const panelNoElement = Array.from(tr.querySelectorAll('.formula-h1'))
+            let panelNoElement = Array.from(tr.querySelectorAll('.formula-h1'))
                 .find(el => el.innerText.includes('Panel no.'))
                 ?.nextElementSibling;
-            const panelNo = panelNoElement ? panelNoElement.innerText.trim() : '';
+            let panelNo = panelNoElement ? panelNoElement.innerText.trim() : '';
 
+            if (!panelNo) {
+
+            }
+            console.log('panel no ', panelNo);
             // Extract background color from the canvas or div
             const canvasWrapper = tr.querySelector('#canvas_wrapper');
             let bgColor = '';
@@ -173,67 +184,7 @@ async function scrapFormaulaDetailsData(sid, id) {
     return data;
 }
 
-
-
-// async function loadNewPage(sid, id, new_page) {
-async function scrapFormaulaDetailsData_d(sid, id) {
-
-    let load_url = 'https://generalpaint.info/v2/search/family?id=' + id + '&sid=' + sid;
-    console.log('scrapFormaulaDetailsDataUrl', load_url);
-    await new_page.goto(load_url);// await new_page.goto(load_url, { waitUntil: 'domcontentloaded' });        
-    randomWaitTime = getRandomNumber(3500, 5500);
-    await new_page.goto(load_url);
-    await new_page.waitForTimeout(randomWaitTime);
-    console.log('step 2');
-    await new_page.waitForSelector('.container.mt-4');
-    let color_paths = await downloadSearchFamilyCanvasImage(sid, id, new_page);
-    const data = await new_page.evaluate((color_paths) => {
-        const formulaH2 = document.querySelector('.formula-h2');
-        const yearColorText = formulaH2 ? formulaH2.innerText.trim() : '';
-        const [year, color] = yearColorText.split('\n').map((text) => text.trim());
-        const toneElement = Array.from(document.querySelectorAll('.formula-h1'))
-            .find(el => el.innerText.includes('Tone'))
-            ?.nextElementSibling;
-        const tone = toneElement ? toneElement.innerText.trim() : '';
-        const panelNoElement = Array.from(document.querySelectorAll('.formula-h1'))
-            .find(el => el.innerText.includes('Panel no.'))
-            ?.nextElementSibling;
-        const panelNo = panelNoElement ? panelNoElement.innerText.trim() : '';
-        const detailsElement = document.querySelector('.formula-info');
-        const details = detailsElement ? detailsElement.getAttribute('data-original-title') : '';
-        const canvasWrapper = document.querySelector('#canvas_wrapper');
-        let bgColor = '';
-
-        if (canvasWrapper) {
-            const canvas = canvasWrapper.querySelector('canvas');
-            if (canvas) {
-                const ctx = canvas.getContext('2d');
-                const imageData = ctx.getImageData(0, 0, 1, 1).data; // Get pixel data from the top-left corner
-                bgColor = `rgba(${imageData[0]}, ${imageData[1]}, ${imageData[2]}, ${imageData[3] / 255})`;
-            } else {
-                bgColor = window.getComputedStyle(canvasWrapper).backgroundColor;
-            }
-        }
-
-        return {
-            year,
-            color,
-            tone,
-            panelNo,
-            details,
-            bgColor,
-            color_paths
-        };
-    }, color_paths);
-
-    console.log('scrapFormaulaDetailsData Extracted Data:', data);
-    return data;
-
-}
-
 async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
-    console.log('starting downloadSearchFamilyCanvasImage2 sid', sid);
-
     const canvasImages = await canvas_page.evaluate(async () => {
         const images = [];
         const trElements = document.querySelectorAll('tbody tr');
@@ -260,11 +211,8 @@ async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
 
         return images;
     });
-
-    console.log('entering loop');
     let images_arr = [];
     for (const { index, image } of canvasImages) {
-        console.log('iterating loop ', index);
         let random_number = getRandomNumber(1000, 9999);
         const base64Data = image.replace(/^data:image\/png;base64,/, '');
         let imagePath = path.join('paint/colors', `${random_number}_${id}_${sid}_${index}.png`);
@@ -274,8 +222,6 @@ async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
             else console.log(`Image ${index} saved successfully!`);
         });
     }
-
-    console.log('All images have been saved.');
     return images_arr;
 }
 
@@ -285,7 +231,7 @@ async function scrapColorInfoData(id) {
     randomWaitTime = getRandomNumber(3500, 5500);
     await page.waitForTimeout(randomWaitTime);
     await new_page.waitForSelector('.container.mt-4');
-    await downloadCanvasImage(new_page);
+    await downloadSearchFamilyCanvasImage(new_page);
     const data = await new_page.evaluate(() => {
         const container = document.querySelector('.container.mt-4');
         if (!container) return null;
@@ -305,94 +251,154 @@ async function scrapColorInfoData(id) {
     });
 
     console.log('Extracted Data:', data);
-    // if (data.bgColor) {
-    //     const pngFileName = `paint/colors/${getRandomNumber(11111, 99999)}.png`;
-    //     await saveColorAsPng(data.bgColor, pngFileName);
-    // }
     return data;
 }
 
-async function downloadCanvasImage(canvas_page) {
-    // const canvasXPath = 'xpath=//html/body/div/table/tbody/tr/td[1]/div/canvas';
+async function setSearchFilters(selected_page, filters) {
+    let randomWaitTime = getRandomNumber(1500, 3500);
+    // await selected_page.waitForTimeout(randomWaitTime);
+
+    await selected_page.waitForSelector('#make_dropdown');
+    if (filters.make_dropdown !== null) {
+        await selected_page.selectOption('#make_dropdown', { index: filters.make_dropdown });
+    }
+    if (filters.description !== null) {
+        await selected_page.fill('#description', filters.description);
+        // await selected_page.selectOption('#description', { value: filters.description });
+    }
+    // const selectedValue = await selected_page.evaluate(() => {
+    //     const dropdown = document.getElementById('make_dropdown');
+    //     return dropdown.value;
+    // });
+
+
+    const submitButtonSelector = '.btn.btn-success.btn-lg.mr-3';
+    await Promise.all([
+        selected_page.click(submitButtonSelector),
+    ]);
+
+    await selected_page.waitForTimeout(randomWaitTime);
+}
+const goToNextPage = async (nextpage) => {
     try {
-        const canvas_wrapper = '#canvas_wrapper';
-        await canvas_page.waitForSelector(canvas_wrapper, { timeout: 3000 });
-
-        const canvasDataUrl = await canvas_page.evaluate((xpath) => {
-            const canvas = document.evaluate(
-                xpath,
-                document,
-                null,
-                XPathResult.FIRST_ORDERED_NODE_TYPE,
-                null
-            ).singleNodeValue;
-
-            if (!canvas) return null;
-
-            // Get the image data URL from the canvas
-            return canvas.toDataURL('image/png');
-        }, canvas_wrapper);
-
-        if (canvasDataUrl) {
-            // Decode the Base64-encoded data URL
-            const base64Data = canvasDataUrl.replace(/^data:image\/png;base64,/, '');
-            const fileName = 'canvas_image.png';
-            fs.writeFileSync(fileName, base64Data, 'base64');
-            console.log(`Canvas image saved as ${fileName}`);
-        } else {
-            console.log('Canvas element not found or unable to extract data URL.');
+        console.log('goToNextPage 1');
+        // Find the active page
+        const activePageItem = await nextpage.$('.pagination li.active');
+        if (!activePageItem) {
+            console.log('No active page found.');
+            return false;
         }
-    } catch (error) {
 
+        // Find the next page item
+        const nextPageItem = await activePageItem.evaluateHandle((el) => el.nextElementSibling);
+        if (!nextPageItem || !(await nextPageItem.asElement())) {
+            console.log('No next page found.');
+            return false;
+        }
+
+        // Click the next page link
+        const nextPageLink = await nextPageItem.$('a.page-link');
+        if (!nextPageLink) {
+            console.log('No next page link found.');
+            return false;
+        }
+
+        await Promise.all([
+            nextPageLink.click(),
+            // nextpage.waitForNavigation({ waitUntil: 'networkidle0' })
+        ]);
+
+        console.log('goToNextPage 3');
+        await nextpage.waitForSelector('#digital_formula');
+        console.log('goToNextPage 4');
+        await nextpage.waitForTimeout(5000);
+        console.log('goToNextPage 5');
+
+
+    } catch (error) {
+        console.error('Error in goToNextPage:', error);
+        throw error;
     }
 
-}
+    return true;
+};
 
 async function loadFromPage(res) {
     console.log("load from page ");
+    await setSearchFilters(page, { make_dropdown: 4, description: null });
     let data_arr = [];
-    let randomWaitTime = getRandomNumber(1500, 3500);
-    await page.waitForTimeout(randomWaitTime);
-    await page.waitForSelector('#make_dropdown');
-    await page.selectOption('#make_dropdown', { index: 1 });
-    const selectedValue = await page.evaluate(() => {
-        const dropdown = document.getElementById('make_dropdown');
-        return dropdown.value;
-    });
-    const submitButtonSelector = '.btn.btn-success.btn-lg.mr-3';
-    await Promise.all([
-        page.click(submitButtonSelector),
-    ]);
+    let hasNextPage = true;
 
-    randomWaitTime = getRandomNumber(1500, 3500);
-    await page.waitForTimeout(randomWaitTime);
+    while (hasNextPage) {
 
-    await page.waitForSelector('#digital_formula');
-    const containers_details = await page.$$eval('#digital_formula > .root', (elements) => {
-        return elements.map(el => {
-            return {
-                familyId: el.getAttribute('family_id'),
-                sid: el.getAttribute('sid'),
-                make: el.getAttribute('make'),
-                description: el.getAttribute('desc'),
-                url: el.getAttribute('url'),
-                content: el.innerText.trim()
-            };
+        await page.waitForSelector('#digital_formula');
+        const containers_details = await page.$$eval('#digital_formula > .root', (elements) => {
+            return elements.map(el => {
+                return {
+                    familyId: el.getAttribute('family_id'),
+                    sid: el.getAttribute('sid'),
+                    make: el.getAttribute('make'),
+                    description: el.getAttribute('desc'),
+                    url: el.getAttribute('url'),
+                    content: el.innerText.trim()
+                };
+            });
         });
-    });
-    
-    for (let i = 0; i < containers_details.length; i++) {
-        const container = containers_details[i];
-        const containerHandles = await page.$$('#digital_formula > .root');
-        const hasMultitoneAccess = await containerHandles[i].$('.formula-multitone-access');
-        let infoColorUrl = '';
-        let detailColorUrl = '';
-        if (hasMultitoneAccess) {
-            console.log('multi tone found');
-            continue;
+
+        for (let i = 0; i < containers_details.length; i++) {
+            const container = containers_details[i];
+            const containerHandles = await page.$$('#digital_formula > .root');
+            const hasMultitoneAccess = await containerHandles[i].$('.formula-multitone-access');
+            let infoColorUrl = '';
+            let detailColorUrl = '';
+            let buttons = null;
+            if (hasMultitoneAccess) {
+                // continue;
+
+                console.log('multi tone found', container);
+                await setSearchFilters(multitone_page, { make_dropdown: 1, description: container.description });
+                // buttons = await multitone_page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
+                console.log('buttons', buttons.length);
+                let hasNextMultiPage = true;
+                while(hasNextMultiPage){
+                    for (let index_btn = 0; index_btn < buttons.length; index_btn++) {
+                        await scrapDataFromList(multitone_page, container, buttons, index_btn, data_arr);
+                    }
+                    hasNextMultiPage = await goToNextPage(multitone_page);
+                }
+                
+
+                // console.log('buttons',buttons);
+            }
+            else {
+                // continue;
+                // buttons = await page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
+
+                await scrapDataFromList(page, container, buttons, i, data_arr);
+
+            }
+            // Get the button for the current element
+
+
         }
-        // Get the button for the current element
-        const buttons = await page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
+        hasNextPage = await goToNextPage(page);
+    }
+
+    console.log('final scraped data data', data_arr);
+    await saveToExcel(data_arr, 'paint/paint.csv');
+    return;
+
+}
+
+async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
+    let hasNextPage = true;
+    console.log(`Processing scrapDataFromList 1`);
+
+    // while (hasNextPage) {
+    console.log(`Processing scrapDataFromList 2`);
+
+        buttons = await listpage.$$('#digital_formula > .root button[data-original-title="Color Information"]');
+
         if (buttons[i]) {
             console.log(`Processing container ${i}`);
             await buttons[i].scrollIntoViewIfNeeded();
@@ -401,7 +407,7 @@ async function loadFromPage(res) {
 
             const urlAndIdMatch = onclickValue.match(/formulaInfo\(event,'([^']+)','([^']+)'\)/);
             if (urlAndIdMatch && urlAndIdMatch[1] && urlAndIdMatch[2]) {
-                const url = urlAndIdMatch[1]; 
+                const url = urlAndIdMatch[1];
                 const id = urlAndIdMatch[2];
                 let scrap_details = await scrapFormaulaDetailsData(container.sid, container.familyId);
                 for (const scrap_detail of scrap_details) {
@@ -420,12 +426,9 @@ async function loadFromPage(res) {
                 console.error('Failed to extract URL and ID from onclick value');
             }
         }
-   
-    }
+        // hasNextPage = await goToNextPage(listpage);
 
-    console.log('final scraped data data',data_arr);
-    await saveToExcel(data_arr, 'paint/paint.csv');
-    return;
+    // }
 
 }
 
