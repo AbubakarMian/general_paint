@@ -260,19 +260,32 @@ async function scrapColorInfoData(id) {
 async function setSearchFilters(selected_page, filters) {
     let randomWaitTime = getRandomNumber(1500, 3500);
     // await selected_page.waitForTimeout(randomWaitTime);
+    // description: null,
+    // make_dropdown: make_drop_down_index,
+    // year:year_drop_down_index,
+    // plastic_parts:related_colors_drop_down_index,
+    // groupdesc:color_family_drop_down_index,
+    // effect:solid_effect_drop_down_index,
 
     await selected_page.waitForSelector('#make_dropdown');
     if (filters.make_dropdown !== null) {
         await selected_page.selectOption('#make_dropdown', { index: filters.make_dropdown });
     }
+    if (filters.year !== null) {
+        await selected_page.selectOption('#year', { index: filters.year });
+    }
+    if (filters.plastic_parts !== null) {
+        await selected_page.selectOption('#plastic_parts', { index: filters.plastic_parts });
+    }
+    if (filters.groupdesc !== null) {
+        await selected_page.selectOption('#groupdesc', { index: filters.groupdesc });
+    }
+    if (filters.effect !== null) {
+        await selected_page.selectOption('#effect', { index: filters.effect });
+    }
     if (filters.description !== null) {
         await selected_page.fill('#description', filters.description);
-        // await selected_page.selectOption('#description', { value: filters.description });
     }
-    // const selectedValue = await selected_page.evaluate(() => {
-    //     const dropdown = document.getElementById('make_dropdown');
-    //     return dropdown.value;
-    // });
 
 
     const submitButtonSelector = '.btn.btn-success.btn-lg.mr-3';
@@ -328,7 +341,7 @@ const goToNextPage = async (nextpage) => {
 
 async function get_make_drop_down() {
     return [//248
-         "Manufacturer", "ACURA", "AFNOR", "AIWAYS", "AIXAM", "ALFA ROMEO", "ALPINE", "AMERICAN MOTORS", "APRILIA MOTO", "ARO", "ASIA", "ASTON MARTIN", "AUDI", "AVATR", "BAIC", "BEDFORD", "BELLIER", "BENELLI MOTO", "BENTLEY", "BERKLEY", "BERLIET", "BERTONE", "BMW", "BMW MOTO", "BORGWARD", "BRILLIANCE", "BS2660", "BS381C", "BS4800", "BS5252", "BUERSTNER", "BUGATTI", "BYD AUTO", "CASALINI", "CATERHAM CARS", "CHANGAN", "CHATENET", "CHERY", "CHEVROLET EUR.", "CHRYSLER", "CITROEN", "CLUB CAR", "COMM.VEH.USA", "DACIA", "DAEWOO", "DAEWOO IRAN", "DAF TRUCKS", "DAIHATSU", "DANEMARK STAND", "DATSUN", "DENZA", "DERBI MOTO", "DHL EXPRESS", "DKW", "DONGFENG AUTO", "DR AUTOMOBILES", "DR MOTOR COMPANY", "DUCATI MOTO", "EDSEL", "ERF", "FACEL VEGA", "FAW HONGQI", "FCS", "FERRARI", "FIAT/LANCIA", "FINLANDE STAN", "FISKER", "FLEET", "FLEET GERMANY", "FLEET-AUSTRALIA", "FLEET-FRANCE", "FLEET-SAUDI AR", "FLEET-SPAIN", "FLEET-UK", "FORD EUROPE", "FORD-S.AFRICA", "FORD-USA", "FORD_AUSTRALIA", "FOTON", "FREIGHTLINER", "FSO", "GAC MOTOR", "GAT", "GAZ", "GEELY", "GENERAL MOTORS", "GEO", "GILERA MOTORCYCLES", "GREATWALL AUTO", "GROOVE", "HAFEI", "HAIMA", "HANOMAG", "HARLEY-DAVIDSON", "HAVAL", "HIPHI", "HKS", "HOLDEN", "HONDA", "HONDA MOTO", "HOZON AUTO", "HUMMER", "HYCAN", "HYUNDAI", "IM MOTORS", "INEOS AUTOMOTIVE", "INFINITI", "INNOCENTI", "ISUZU", "IVECO", "JAC MOTORS", "JAGUAR", "JENSEN", "JETOUR", "KARMA AUTO", "KAWASAKI MOTO", "KIA", "KTM MOTO", "KYMCO MOTO", "LADA", "LAMBORGHINI", "LAMBRETTA", "LAND ROVER", "LATAMMO MOTO", "LDV", "LEADING IDEAL", "LEAP MOTOR", "LEVDEO", "LEXUS", "LEYLAND", "LI AUTO", "LIFAN", "LIGIER", "LML", "LONDON ELECTRIC VEHICLE C", "LONDON TAXI", "LOTUS", "LUCID MOTORS", "LUXGEN", "LYNK AND CO", "MAGIRUS", "MAHINDRA", "MALAGUTI MOTO", "MAN", "MARUTI", "MASERATI", "MATRA", "MAZDA", "MCLAREN", "MERCEDES", "MERCEDES TRUCKS", "MG", "MICROCAR", "MIDDLEBRIDGE", "MINI", "MITSUBISHI", "MITSUBISHI TRUCKS", "MORGAN", "MOSKVITCH", "MOTO GUZZI MOTORCYCLES", "MOTORCYCLES", "NAVISTAR", "NCS", "NIO", "NISSAN", "NISSAN S.AFRICA", "NORMAS UNE", "ODA", "OPEL S.AFRICA", "OPEL/VAUXHALL", "OTHER", "PANHARD", "PANTONE", "PERODUA", "PEUGEOT", "PEUGEOT MOTO", "PIAGGIO MOTO", "POLESTAR", "POLESTONES", "PORSCHE", "PRIMER", "PROTON", "QOROS", "RAL", "RAL DESIGN", "RELIANT", "RENAULT", "RENAULT TRUCKS", "RIVIAN", "ROEWE", "ROLLS ROYCE", "ROOTES", "ROVER", "ROX", "SAAB", "SAIC-GM", "SAIPA", "SAMSUNG", "SANTANA", "SCANIA TRUCKS", "SEAT", "SERES", "SETRA", "SINOTRUK", "SKODA", "SKYWELL", "SMART", "SOUEAST", "SPECTRUM", "SSANGYONG", "STUDEBAKER", "SUBARU", "SUZUKI", "SUZUKI MOTO", "SWM MOTORS", "TALBOT", "TATA", "TATRA TRUCKS", "TESLA MOTORS", "TOYOTA", "TOYOTA S.AFRICA", "TOYOTA TRUCKS", "TRABANT", "TRIUMPH", "TRIUMPH MOTO", "TVR", "UAZ", "UMM", "VESPA", "VOLGA", "VOLKSWAGEN", "VOLVO", "VOLVO TRUCKS", "VORTEX", "VOYAH", "VSLF/USVC", "VW BRAZIL", "VW SHANGHAI", "WARTBURG", "WEY", "WM MOTOR", "WULING", "XPENG MOTORS", "YAMAHA MOTO", "YUGO", "ZAZ", "ZEEKR", "ZOTYE"
+        "Manufacturer", "ACURA", "AFNOR", "AIWAYS", "AIXAM", "ALFA ROMEO", "ALPINE", "AMERICAN MOTORS", "APRILIA MOTO", "ARO", "ASIA", "ASTON MARTIN", "AUDI", "AVATR", "BAIC", "BEDFORD", "BELLIER", "BENELLI MOTO", "BENTLEY", "BERKLEY", "BERLIET", "BERTONE", "BMW", "BMW MOTO", "BORGWARD", "BRILLIANCE", "BS2660", "BS381C", "BS4800", "BS5252", "BUERSTNER", "BUGATTI", "BYD AUTO", "CASALINI", "CATERHAM CARS", "CHANGAN", "CHATENET", "CHERY", "CHEVROLET EUR.", "CHRYSLER", "CITROEN", "CLUB CAR", "COMM.VEH.USA", "DACIA", "DAEWOO", "DAEWOO IRAN", "DAF TRUCKS", "DAIHATSU", "DANEMARK STAND", "DATSUN", "DENZA", "DERBI MOTO", "DHL EXPRESS", "DKW", "DONGFENG AUTO", "DR AUTOMOBILES", "DR MOTOR COMPANY", "DUCATI MOTO", "EDSEL", "ERF", "FACEL VEGA", "FAW HONGQI", "FCS", "FERRARI", "FIAT/LANCIA", "FINLANDE STAN", "FISKER", "FLEET", "FLEET GERMANY", "FLEET-AUSTRALIA", "FLEET-FRANCE", "FLEET-SAUDI AR", "FLEET-SPAIN", "FLEET-UK", "FORD EUROPE", "FORD-S.AFRICA", "FORD-USA", "FORD_AUSTRALIA", "FOTON", "FREIGHTLINER", "FSO", "GAC MOTOR", "GAT", "GAZ", "GEELY", "GENERAL MOTORS", "GEO", "GILERA MOTORCYCLES", "GREATWALL AUTO", "GROOVE", "HAFEI", "HAIMA", "HANOMAG", "HARLEY-DAVIDSON", "HAVAL", "HIPHI", "HKS", "HOLDEN", "HONDA", "HONDA MOTO", "HOZON AUTO", "HUMMER", "HYCAN", "HYUNDAI", "IM MOTORS", "INEOS AUTOMOTIVE", "INFINITI", "INNOCENTI", "ISUZU", "IVECO", "JAC MOTORS", "JAGUAR", "JENSEN", "JETOUR", "KARMA AUTO", "KAWASAKI MOTO", "KIA", "KTM MOTO", "KYMCO MOTO", "LADA", "LAMBORGHINI", "LAMBRETTA", "LAND ROVER", "LATAMMO MOTO", "LDV", "LEADING IDEAL", "LEAP MOTOR", "LEVDEO", "LEXUS", "LEYLAND", "LI AUTO", "LIFAN", "LIGIER", "LML", "LONDON ELECTRIC VEHICLE C", "LONDON TAXI", "LOTUS", "LUCID MOTORS", "LUXGEN", "LYNK AND CO", "MAGIRUS", "MAHINDRA", "MALAGUTI MOTO", "MAN", "MARUTI", "MASERATI", "MATRA", "MAZDA", "MCLAREN", "MERCEDES", "MERCEDES TRUCKS", "MG", "MICROCAR", "MIDDLEBRIDGE", "MINI", "MITSUBISHI", "MITSUBISHI TRUCKS", "MORGAN", "MOSKVITCH", "MOTO GUZZI MOTORCYCLES", "MOTORCYCLES", "NAVISTAR", "NCS", "NIO", "NISSAN", "NISSAN S.AFRICA", "NORMAS UNE", "ODA", "OPEL S.AFRICA", "OPEL/VAUXHALL", "OTHER", "PANHARD", "PANTONE", "PERODUA", "PEUGEOT", "PEUGEOT MOTO", "PIAGGIO MOTO", "POLESTAR", "POLESTONES", "PORSCHE", "PRIMER", "PROTON", "QOROS", "RAL", "RAL DESIGN", "RELIANT", "RENAULT", "RENAULT TRUCKS", "RIVIAN", "ROEWE", "ROLLS ROYCE", "ROOTES", "ROVER", "ROX", "SAAB", "SAIC-GM", "SAIPA", "SAMSUNG", "SANTANA", "SCANIA TRUCKS", "SEAT", "SERES", "SETRA", "SINOTRUK", "SKODA", "SKYWELL", "SMART", "SOUEAST", "SPECTRUM", "SSANGYONG", "STUDEBAKER", "SUBARU", "SUZUKI", "SUZUKI MOTO", "SWM MOTORS", "TALBOT", "TATA", "TATRA TRUCKS", "TESLA MOTORS", "TOYOTA", "TOYOTA S.AFRICA", "TOYOTA TRUCKS", "TRABANT", "TRIUMPH", "TRIUMPH MOTO", "TVR", "UAZ", "UMM", "VESPA", "VOLGA", "VOLKSWAGEN", "VOLVO", "VOLVO TRUCKS", "VORTEX", "VOYAH", "VSLF/USVC", "VW BRAZIL", "VW SHANGHAI", "WARTBURG", "WEY", "WM MOTOR", "WULING", "XPENG MOTORS", "YAMAHA MOTO", "YUGO", "ZAZ", "ZEEKR", "ZOTYE"
         //"Manufacturer", "ACURA", "AFNOR" //"AIWAYS", "AIXAM", "ALFA ROMEO", "ALPINE", "AMERICAN MOTORS", "APRILIA MOTO", "ARO", "ASIA", "ASTON MARTIN", "AUDI", "AVATR", "BAIC", "BEDFORD", "BELLIER", "BENELLI MOTO", "BENTLEY", "BERKLEY", "BERLIET", "BERTONE", "BMW", "BMW MOTO", "BORGWARD", "BRILLIANCE", "BS2660", "BS381C", "BS4800", "BS5252", "BUERSTNER", "BUGATTI", "BYD AUTO", "CASALINI", "CATERHAM CARS", "CHANGAN", "CHATENET", "CHERY", "CHEVROLET EUR.", "CHRYSLER", "CITROEN", "CLUB CAR", "COMM.VEH.USA", "DACIA", "DAEWOO", "DAEWOO IRAN", "DAF TRUCKS", "DAIHATSU", "DANEMARK STAND", "DATSUN", "DENZA", "DERBI MOTO", "DHL EXPRESS", "DKW", "DONGFENG AUTO", "DR AUTOMOBILES", "DR MOTOR COMPANY", "DUCATI MOTO", "EDSEL", "ERF", "FACEL VEGA", "FAW HONGQI", "FCS", "FERRARI", "FIAT/LANCIA", "FINLANDE STAN", "FISKER", "FLEET", "FLEET GERMANY", "FLEET-AUSTRALIA", "FLEET-FRANCE", "FLEET-SAUDI AR", "FLEET-SPAIN", "FLEET-UK", "FORD EUROPE", "FORD-S.AFRICA", "FORD-USA", "FORD_AUSTRALIA", "FOTON", "FREIGHTLINER", "FSO", "GAC MOTOR", "GAT", "GAZ", "GEELY", "GENERAL MOTORS", "GEO", "GILERA MOTORCYCLES", "GREATWALL AUTO", "GROOVE", "HAFEI", "HAIMA", "HANOMAG", "HARLEY-DAVIDSON", "HAVAL", "HIPHI", "HKS", "HOLDEN", "HONDA", "HONDA MOTO", "HOZON AUTO", "HUMMER", "HYCAN", "HYUNDAI", "IM MOTORS", "INEOS AUTOMOTIVE", "INFINITI", "INNOCENTI", "ISUZU", "IVECO", "JAC MOTORS", "JAGUAR", "JENSEN", "JETOUR", "KARMA AUTO", "KAWASAKI MOTO", "KIA", "KTM MOTO", "KYMCO MOTO", "LADA", "LAMBORGHINI", "LAMBRETTA", "LAND ROVER", "LATAMMO MOTO", "LDV", "LEADING IDEAL", "LEAP MOTOR", "LEVDEO", "LEXUS", "LEYLAND", "LI AUTO", "LIFAN", "LIGIER", "LML", "LONDON ELECTRIC VEHICLE C", "LONDON TAXI", "LOTUS", "LUCID MOTORS", "LUXGEN", "LYNK AND CO", "MAGIRUS", "MAHINDRA", "MALAGUTI MOTO", "MAN", "MARUTI", "MASERATI", "MATRA", "MAZDA", "MCLAREN", "MERCEDES", "MERCEDES TRUCKS", "MG", "MICROCAR", "MIDDLEBRIDGE", "MINI", "MITSUBISHI", "MITSUBISHI TRUCKS", "MORGAN", "MOSKVITCH", "MOTO GUZZI MOTORCYCLES", "MOTORCYCLES", "NAVISTAR", "NCS", "NIO", "NISSAN", "NISSAN S.AFRICA", "NORMAS UNE", "ODA", "OPEL S.AFRICA", "OPEL/VAUXHALL", "OTHER", "PANHARD", "PANTONE", "PERODUA", "PEUGEOT", "PEUGEOT MOTO", "PIAGGIO MOTO", "POLESTAR", "POLESTONES", "PORSCHE", "PRIMER", "PROTON", "QOROS", "RAL", "RAL DESIGN", "RELIANT", "RENAULT", "RENAULT TRUCKS", "RIVIAN", "ROEWE", "ROLLS ROYCE", "ROOTES", "ROVER", "ROX", "SAAB", "SAIC-GM", "SAIPA", "SAMSUNG", "SANTANA", "SCANIA TRUCKS", "SEAT", "SERES", "SETRA", "SINOTRUK", "SKODA", "SKYWELL", "SMART", "SOUEAST", "SPECTRUM", "SSANGYONG", "STUDEBAKER", "SUBARU", "SUZUKI", "SUZUKI MOTO", "SWM MOTORS", "TALBOT", "TATA", "TATRA TRUCKS", "TESLA MOTORS", "TOYOTA", "TOYOTA S.AFRICA", "TOYOTA TRUCKS", "TRABANT", "TRIUMPH", "TRIUMPH MOTO", "TVR", "UAZ", "UMM", "VESPA", "VOLGA", "VOLKSWAGEN", "VOLVO", "VOLVO TRUCKS", "VORTEX", "VOYAH", "VSLF/USVC", "VW BRAZIL", "VW SHANGHAI", "WARTBURG", "WEY", "WM MOTOR", "WULING", "XPENG MOTORS", "YAMAHA MOTO", "YUGO", "ZAZ", "ZEEKR", "ZOTYE"
     ];
 }
@@ -414,7 +427,7 @@ async function loadFromPage(res) {
         solid_effect_drop_down_index = parseInt(lastRow[8]);
         starting_from_csv_skip_loop = true;
     }
-    else{
+    else {
         const all_completed = readLastRowFromCsv(all_completed_filter_csv);
         if (all_completed) {
             make_drop_down_index = parseInt(all_completed[0]);
@@ -426,34 +439,36 @@ async function loadFromPage(res) {
         }
     }
 
-    console.log("make_drop_down_index", make_drop_down_index);
-    console.log("year_drop_down_index", year_drop_down_index);
-    console.log("related_colors_drop_down_index", related_colors_drop_down_index);
-    console.log("color_family_drop_down_index", color_family_drop_down_index);
-    console.log("solid_effect_drop_down_index", solid_effect_drop_down_index);
-    console.log("starting_from_csv_skip_loop", starting_from_csv_skip_loop);
-
     let shouldStop = false; // Flag to control loop termination
     let total_count = 0;
 
     for (; make_drop_down_index < make_drop_down.length; make_drop_down_index++) {
         for (; year_drop_down_index < year_drop_down.length; year_drop_down_index++) {
             console.log("starting  year_drop_down_index");
-            
+
             for (; related_colors_drop_down_index < related_colors_drop_down.length; related_colors_drop_down_index++) {
                 console.log("starting  related_colors_drop_down_index");
-                
+
                 for (; color_family_drop_down_index < color_family_drop_down.length; color_family_drop_down_index++) {
                     console.log("starting  solid_effect_drop_down_index");
-                    
+
                     for (; solid_effect_drop_down_index < solid_effect_drop_down.length; solid_effect_drop_down_index++) {
                         console.log("in  solid_effect_drop_down_index");
-                    
+
                         if (starting_from_csv_skip_loop) {
                             console.log("skip loop");
                             starting_from_csv_skip_loop = false;
                             continue;
                         }
+                        await setSearchFilters(page, {
+                            description: null,
+                            make_dropdown: make_drop_down_index,
+                            year:year_drop_down_index,
+                            plastic_parts:related_colors_drop_down_index,
+                            groupdesc:color_family_drop_down_index,
+                            effect:solid_effect_drop_down_index,
+                        });
+                        scrapDataFromPages(filters);
                         const row = [
                             make_drop_down_index, make_drop_down[make_drop_down_index],
                             year_drop_down_index, year_drop_down[year_drop_down_index],
@@ -464,7 +479,7 @@ async function loadFromPage(res) {
                         writeCurrentRowToCsv(row);
                         appendCurrentRowToCsv(row);
                         console.log("solid_effect_drop_down index :" + solid_effect_drop_down_index, solid_effect_drop_down_index);
-                        
+
                         if (total_count > 100) {
                             shouldStop = true; // Set the flag to true
                             break; // Exit the innermost loop
@@ -476,20 +491,26 @@ async function loadFromPage(res) {
 
                         total_count++;
                     }
-                    solid_effect_drop_down_index=0;
+                    solid_effect_drop_down_index = 0;
                     if (shouldStop) break; // Exit the color_family_drop_down loop
                 }
-                color_family_drop_down_index=0;
+                color_family_drop_down_index = 0;
                 if (shouldStop) break; // Exit the related_colors_drop_down loop
             }
             if (shouldStop) break; // Exit the year_drop_down loop
-            related_colors_drop_down_index=0;
+            related_colors_drop_down_index = 0;
         }
         if (shouldStop) break; // Exit the make_drop_down loop
-        year_drop_down_index=0;
+        year_drop_down_index = 0;
     }
+    // return;
+    // await setSearchFilters(page, { make_dropdown: 4, description: null });
+
     return;
-    await setSearchFilters(page, { make_dropdown: 4, description: null });
+
+}
+
+async function scrapDataFromPages(filters) {
     let data_arr = [];
     let hasNextPage = true;
 
@@ -517,12 +538,8 @@ async function loadFromPage(res) {
             let detailColorUrl = '';
             let buttons = null;
             if (hasMultitoneAccess) {
-                // continue;
-
                 console.log('multi tone found', container);
                 await setSearchFilters(multitone_page, { make_dropdown: 1, description: container.description });
-                // buttons = await multitone_page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
-                console.log('buttons', buttons.length);
                 let hasNextMultiPage = true;
                 while (hasNextMultiPage) {
                     for (let index_btn = 0; index_btn < buttons.length; index_btn++) {
@@ -530,14 +547,9 @@ async function loadFromPage(res) {
                     }
                     hasNextMultiPage = await goToNextPage(multitone_page);
                 }
-                // console.log('buttons',buttons);
             }
             else {
-                // continue;
-                // buttons = await page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
-
                 await scrapDataFromList(page, container, buttons, i, data_arr);
-
             }
         }
         hasNextPage = await goToNextPage(page);
@@ -545,8 +557,6 @@ async function loadFromPage(res) {
 
     console.log('final scraped data data', data_arr);
     await saveToExcel(data_arr, 'paint/paint.csv');
-    return;
-
 }
 
 async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
