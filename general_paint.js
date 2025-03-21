@@ -189,6 +189,7 @@ async function scrapFormaulaDetailsData(sid, id) {
 }
 
 async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
+    console.log('creating img');
     const canvasImages = await canvas_page.evaluate(async () => {
         const images = [];
         const trElements = document.querySelectorAll('tbody tr');
@@ -217,19 +218,12 @@ async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
     });
     let images_arr = [];
     for (const { index, image } of canvasImages) {
-        let random_number = getRandomNumber(1000, 9999);
+        let random_number = getRandomNumber(10000,99999);
+        let uniq_name = getUniqueName(`${random_number}_${id}_${sid}_${index}.png`);
         const base64Data = image.replace(/^data:image\/png;base64,/, '');
-        // filters_obj = {
-        //     make_dropdown: get_make_drop_down,
-        //     year: get_year_drop_down,
-        //     plastic_parts: get_related_colors_drop_down,
-        //     groupdesc: get_color_family_drop_down,
-        //     effect: get_solid_effect_drop_down,
-        // };
-
         let color_path = await getColorPath();
         
-        let imagePath = path.join(color_path, `${random_number}_${id}_${sid}_${index}.png`);
+        let imagePath = path.join(color_path,uniq_name );
         // let imagePath = path.join('paint/colors', `${random_number}_${id}_${sid}_${index}.png`);
         images_arr.push(imagePath);
         fs.writeFileSync(imagePath, base64Data, 'base64', (err) => {
@@ -238,6 +232,10 @@ async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
         });
     }
     return images_arr;
+}
+function getUniqueName(baseName) {
+    const timestamp = new Date().getTime(); // Current time in milliseconds
+    return `${timestamp}_${baseName}`;
 }
 
 async function getColorPath() {
@@ -302,7 +300,7 @@ async function setSearchFilters(selected_page, description = null) {
     // groupdesc:color_family_drop_down_index,
     // effect:solid_effect_drop_down_index,
 
-    console.log('my filters set : ', filters);
+    // console.log('my filters set : ', filters);
 
     await selected_page.waitForSelector('#make_dropdown');
     if (filters.make_dropdown !== null) {
@@ -387,21 +385,21 @@ const goToNextPage = async (nextpage) => {
 
 async function get_make_drop_down() {
     return [//248
-        //"Manufacturer", "ACURA", "AFNOR", "AIWAYS", "AIXAM", "ALFA ROMEO", "ALPINE", "AMERICAN MOTORS", "APRILIA MOTO", "ARO", "ASIA", "ASTON MARTIN", "AUDI", "AVATR", "BAIC", "BEDFORD", "BELLIER", "BENELLI MOTO", "BENTLEY", "BERKLEY", "BERLIET", "BERTONE", "BMW", "BMW MOTO", "BORGWARD", "BRILLIANCE", "BS2660", "BS381C", "BS4800", "BS5252", "BUERSTNER", "BUGATTI", "BYD AUTO", "CASALINI", "CATERHAM CARS", "CHANGAN", "CHATENET", "CHERY", "CHEVROLET EUR.", "CHRYSLER", "CITROEN", "CLUB CAR", "COMM.VEH.USA", "DACIA", "DAEWOO", "DAEWOO IRAN", "DAF TRUCKS", "DAIHATSU", "DANEMARK STAND", "DATSUN", "DENZA", "DERBI MOTO", "DHL EXPRESS", "DKW", "DONGFENG AUTO", "DR AUTOMOBILES", "DR MOTOR COMPANY", "DUCATI MOTO", "EDSEL", "ERF", "FACEL VEGA", "FAW HONGQI", "FCS", "FERRARI", "FIAT/LANCIA", "FINLANDE STAN", "FISKER", "FLEET", "FLEET GERMANY", "FLEET-AUSTRALIA", "FLEET-FRANCE", "FLEET-SAUDI AR", "FLEET-SPAIN", "FLEET-UK", "FORD EUROPE", "FORD-S.AFRICA", "FORD-USA", "FORD_AUSTRALIA", "FOTON", "FREIGHTLINER", "FSO", "GAC MOTOR", "GAT", "GAZ", "GEELY", "GENERAL MOTORS", "GEO", "GILERA MOTORCYCLES", "GREATWALL AUTO", "GROOVE", "HAFEI", "HAIMA", "HANOMAG", "HARLEY-DAVIDSON", "HAVAL", "HIPHI", "HKS", "HOLDEN", "HONDA", "HONDA MOTO", "HOZON AUTO", "HUMMER", "HYCAN", "HYUNDAI", "IM MOTORS", "INEOS AUTOMOTIVE", "INFINITI", "INNOCENTI", "ISUZU", "IVECO", "JAC MOTORS", "JAGUAR", "JENSEN", "JETOUR", "KARMA AUTO", "KAWASAKI MOTO", "KIA", "KTM MOTO", "KYMCO MOTO", "LADA", "LAMBORGHINI", "LAMBRETTA", "LAND ROVER", "LATAMMO MOTO", "LDV", "LEADING IDEAL", "LEAP MOTOR", "LEVDEO", "LEXUS", "LEYLAND", "LI AUTO", "LIFAN", "LIGIER", "LML", "LONDON ELECTRIC VEHICLE C", "LONDON TAXI", "LOTUS", "LUCID MOTORS", "LUXGEN", "LYNK AND CO", "MAGIRUS", "MAHINDRA", "MALAGUTI MOTO", "MAN", "MARUTI", "MASERATI", "MATRA", "MAZDA", "MCLAREN", "MERCEDES", "MERCEDES TRUCKS", "MG", "MICROCAR", "MIDDLEBRIDGE", "MINI", "MITSUBISHI", "MITSUBISHI TRUCKS", "MORGAN", "MOSKVITCH", "MOTO GUZZI MOTORCYCLES", "MOTORCYCLES", "NAVISTAR", "NCS", "NIO", "NISSAN", "NISSAN S.AFRICA", "NORMAS UNE", "ODA", "OPEL S.AFRICA", "OPEL/VAUXHALL", "OTHER", "PANHARD", "PANTONE", "PERODUA", "PEUGEOT", "PEUGEOT MOTO", "PIAGGIO MOTO", "POLESTAR", "POLESTONES", "PORSCHE", "PRIMER", "PROTON", "QOROS", "RAL", "RAL DESIGN", "RELIANT", "RENAULT", "RENAULT TRUCKS", "RIVIAN", "ROEWE", "ROLLS ROYCE", "ROOTES", "ROVER", "ROX", "SAAB", "SAIC-GM", "SAIPA", "SAMSUNG", "SANTANA", "SCANIA TRUCKS", "SEAT", "SERES", "SETRA", "SINOTRUK", "SKODA", "SKYWELL", "SMART", "SOUEAST", "SPECTRUM", "SSANGYONG", "STUDEBAKER", "SUBARU", "SUZUKI", "SUZUKI MOTO", "SWM MOTORS", "TALBOT", "TATA", "TATRA TRUCKS", "TESLA MOTORS", "TOYOTA", "TOYOTA S.AFRICA", "TOYOTA TRUCKS", "TRABANT", "TRIUMPH", "TRIUMPH MOTO", "TVR", "UAZ", "UMM", "VESPA", "VOLGA", "VOLKSWAGEN", "VOLVO", "VOLVO TRUCKS", "VORTEX", "VOYAH", "VSLF/USVC", "VW BRAZIL", "VW SHANGHAI", "WARTBURG", "WEY", "WM MOTOR", "WULING", "XPENG MOTORS", "YAMAHA MOTO", "YUGO", "ZAZ", "ZEEKR", "ZOTYE"
-        "Manufacturer", "ACURA", "AFNOR" //"AIWAYS", "AIXAM", "ALFA ROMEO", "ALPINE", "AMERICAN MOTORS", "APRILIA MOTO", "ARO", "ASIA", "ASTON MARTIN", "AUDI", "AVATR", "BAIC", "BEDFORD", "BELLIER", "BENELLI MOTO", "BENTLEY", "BERKLEY", "BERLIET", "BERTONE", "BMW", "BMW MOTO", "BORGWARD", "BRILLIANCE", "BS2660", "BS381C", "BS4800", "BS5252", "BUERSTNER", "BUGATTI", "BYD AUTO", "CASALINI", "CATERHAM CARS", "CHANGAN", "CHATENET", "CHERY", "CHEVROLET EUR.", "CHRYSLER", "CITROEN", "CLUB CAR", "COMM.VEH.USA", "DACIA", "DAEWOO", "DAEWOO IRAN", "DAF TRUCKS", "DAIHATSU", "DANEMARK STAND", "DATSUN", "DENZA", "DERBI MOTO", "DHL EXPRESS", "DKW", "DONGFENG AUTO", "DR AUTOMOBILES", "DR MOTOR COMPANY", "DUCATI MOTO", "EDSEL", "ERF", "FACEL VEGA", "FAW HONGQI", "FCS", "FERRARI", "FIAT/LANCIA", "FINLANDE STAN", "FISKER", "FLEET", "FLEET GERMANY", "FLEET-AUSTRALIA", "FLEET-FRANCE", "FLEET-SAUDI AR", "FLEET-SPAIN", "FLEET-UK", "FORD EUROPE", "FORD-S.AFRICA", "FORD-USA", "FORD_AUSTRALIA", "FOTON", "FREIGHTLINER", "FSO", "GAC MOTOR", "GAT", "GAZ", "GEELY", "GENERAL MOTORS", "GEO", "GILERA MOTORCYCLES", "GREATWALL AUTO", "GROOVE", "HAFEI", "HAIMA", "HANOMAG", "HARLEY-DAVIDSON", "HAVAL", "HIPHI", "HKS", "HOLDEN", "HONDA", "HONDA MOTO", "HOZON AUTO", "HUMMER", "HYCAN", "HYUNDAI", "IM MOTORS", "INEOS AUTOMOTIVE", "INFINITI", "INNOCENTI", "ISUZU", "IVECO", "JAC MOTORS", "JAGUAR", "JENSEN", "JETOUR", "KARMA AUTO", "KAWASAKI MOTO", "KIA", "KTM MOTO", "KYMCO MOTO", "LADA", "LAMBORGHINI", "LAMBRETTA", "LAND ROVER", "LATAMMO MOTO", "LDV", "LEADING IDEAL", "LEAP MOTOR", "LEVDEO", "LEXUS", "LEYLAND", "LI AUTO", "LIFAN", "LIGIER", "LML", "LONDON ELECTRIC VEHICLE C", "LONDON TAXI", "LOTUS", "LUCID MOTORS", "LUXGEN", "LYNK AND CO", "MAGIRUS", "MAHINDRA", "MALAGUTI MOTO", "MAN", "MARUTI", "MASERATI", "MATRA", "MAZDA", "MCLAREN", "MERCEDES", "MERCEDES TRUCKS", "MG", "MICROCAR", "MIDDLEBRIDGE", "MINI", "MITSUBISHI", "MITSUBISHI TRUCKS", "MORGAN", "MOSKVITCH", "MOTO GUZZI MOTORCYCLES", "MOTORCYCLES", "NAVISTAR", "NCS", "NIO", "NISSAN", "NISSAN S.AFRICA", "NORMAS UNE", "ODA", "OPEL S.AFRICA", "OPEL/VAUXHALL", "OTHER", "PANHARD", "PANTONE", "PERODUA", "PEUGEOT", "PEUGEOT MOTO", "PIAGGIO MOTO", "POLESTAR", "POLESTONES", "PORSCHE", "PRIMER", "PROTON", "QOROS", "RAL", "RAL DESIGN", "RELIANT", "RENAULT", "RENAULT TRUCKS", "RIVIAN", "ROEWE", "ROLLS ROYCE", "ROOTES", "ROVER", "ROX", "SAAB", "SAIC-GM", "SAIPA", "SAMSUNG", "SANTANA", "SCANIA TRUCKS", "SEAT", "SERES", "SETRA", "SINOTRUK", "SKODA", "SKYWELL", "SMART", "SOUEAST", "SPECTRUM", "SSANGYONG", "STUDEBAKER", "SUBARU", "SUZUKI", "SUZUKI MOTO", "SWM MOTORS", "TALBOT", "TATA", "TATRA TRUCKS", "TESLA MOTORS", "TOYOTA", "TOYOTA S.AFRICA", "TOYOTA TRUCKS", "TRABANT", "TRIUMPH", "TRIUMPH MOTO", "TVR", "UAZ", "UMM", "VESPA", "VOLGA", "VOLKSWAGEN", "VOLVO", "VOLVO TRUCKS", "VORTEX", "VOYAH", "VSLF/USVC", "VW BRAZIL", "VW SHANGHAI", "WARTBURG", "WEY", "WM MOTOR", "WULING", "XPENG MOTORS", "YAMAHA MOTO", "YUGO", "ZAZ", "ZEEKR", "ZOTYE"
+        "Manufacturer", "ACURA", "AFNOR", "AIWAYS", "AIXAM", "ALFA ROMEO", "ALPINE", "AMERICAN MOTORS", "APRILIA MOTO", "ARO", "ASIA", "ASTON MARTIN", "AUDI", "AVATR", "BAIC", "BEDFORD", "BELLIER", "BENELLI MOTO", "BENTLEY", "BERKLEY", "BERLIET", "BERTONE", "BMW", "BMW MOTO", "BORGWARD", "BRILLIANCE", "BS2660", "BS381C", "BS4800", "BS5252", "BUERSTNER", "BUGATTI", "BYD AUTO", "CASALINI", "CATERHAM CARS", "CHANGAN", "CHATENET", "CHERY", "CHEVROLET EUR_", "CHRYSLER", "CITROEN", "CLUB CAR", "COMM_VEH_USA", "DACIA", "DAEWOO", "DAEWOO IRAN", "DAF TRUCKS", "DAIHATSU", "DANEMARK STAND", "DATSUN", "DENZA", "DERBI MOTO", "DHL EXPRESS", "DKW", "DONGFENG AUTO", "DR AUTOMOBILES", "DR MOTOR COMPANY", "DUCATI MOTO", "EDSEL", "ERF", "FACEL VEGA", "FAW HONGQI", "FCS", "FERRARI", "FIAT_LANCIA", "FINLANDE STAN", "FISKER", "FLEET", "FLEET GERMANY", "FLEET_AUSTRALIA", "FLEET_FRANCE", "FLEET_SAUDI AR", "FLEET_SPAIN", "FLEET_UK", "FORD EUROPE", "FORD_S_AFRICA", "FORD_USA", "FORD_AUSTRALIA", "FOTON", "FREIGHTLINER", "FSO", "GAC MOTOR", "GAT", "GAZ", "GEELY", "GENERAL MOTORS", "GEO", "GILERA MOTORCYCLES", "GREATWALL AUTO", "GROOVE", "HAFEI", "HAIMA", "HANOMAG", "HARLEY_DAVIDSON", "HAVAL", "HIPHI", "HKS", "HOLDEN", "HONDA", "HONDA MOTO", "HOZON AUTO", "HUMMER", "HYCAN", "HYUNDAI", "IM MOTORS", "INEOS AUTOMOTIVE", "INFINITI", "INNOCENTI", "ISUZU", "IVECO", "JAC MOTORS", "JAGUAR", "JENSEN", "JETOUR", "KARMA AUTO", "KAWASAKI MOTO", "KIA", "KTM MOTO", "KYMCO MOTO", "LADA", "LAMBORGHINI", "LAMBRETTA", "LAND ROVER", "LATAMMO MOTO", "LDV", "LEADING IDEAL", "LEAP MOTOR", "LEVDEO", "LEXUS", "LEYLAND", "LI AUTO", "LIFAN", "LIGIER", "LML", "LONDON ELECTRIC VEHICLE C", "LONDON TAXI", "LOTUS", "LUCID MOTORS", "LUXGEN", "LYNK AND CO", "MAGIRUS", "MAHINDRA", "MALAGUTI MOTO", "MAN", "MARUTI", "MASERATI", "MATRA", "MAZDA", "MCLAREN", "MERCEDES", "MERCEDES TRUCKS", "MG", "MICROCAR", "MIDDLEBRIDGE", "MINI", "MITSUBISHI", "MITSUBISHI TRUCKS", "MORGAN", "MOSKVITCH", "MOTO GUZZI MOTORCYCLES", "MOTORCYCLES", "NAVISTAR", "NCS", "NIO", "NISSAN", "NISSAN S_AFRICA", "NORMAS UNE", "ODA", "OPEL S_AFRICA", "OPEL_VAUXHALL", "OTHER", "PANHARD", "PANTONE", "PERODUA", "PEUGEOT", "PEUGEOT MOTO", "PIAGGIO MOTO", "POLESTAR", "POLESTONES", "PORSCHE", "PRIMER", "PROTON", "QOROS", "RAL", "RAL DESIGN", "RELIANT", "RENAULT", "RENAULT TRUCKS", "RIVIAN", "ROEWE", "ROLLS ROYCE", "ROOTES", "ROVER", "ROX", "SAAB", "SAIC_GM", "SAIPA", "SAMSUNG", "SANTANA", "SCANIA TRUCKS", "SEAT", "SERES", "SETRA", "SINOTRUK", "SKODA", "SKYWELL", "SMART", "SOUEAST", "SPECTRUM", "SSANGYONG", "STUDEBAKER", "SUBARU", "SUZUKI", "SUZUKI MOTO", "SWM MOTORS", "TALBOT", "TATA", "TATRA TRUCKS", "TESLA MOTORS", "TOYOTA", "TOYOTA S_AFRICA", "TOYOTA TRUCKS", "TRABANT", "TRIUMPH", "TRIUMPH MOTO", "TVR", "UAZ", "UMM", "VESPA", "VOLGA", "VOLKSWAGEN", "VOLVO", "VOLVO TRUCKS", "VORTEX", "VOYAH", "VSLF_USVC", "VW BRAZIL", "VW SHANGHAI", "WARTBURG", "WEY", "WM MOTOR", "WULING", "XPENG MOTORS", "YAMAHA MOTO", "YUGO", "ZAZ", "ZEEKR", "ZOTYE"
+       // "Manufacturer", "ACURA", "AFNOR" //"AIWAYS", "AIXAM", "ALFA ROMEO", "ALPINE", "AMERICAN MOTORS", "APRILIA MOTO", "ARO", "ASIA", "ASTON MARTIN", "AUDI", "AVATR", "BAIC", "BEDFORD", "BELLIER", "BENELLI MOTO", "BENTLEY", "BERKLEY", "BERLIET", "BERTONE", "BMW", "BMW MOTO", "BORGWARD", "BRILLIANCE", "BS2660", "BS381C", "BS4800", "BS5252", "BUERSTNER", "BUGATTI", "BYD AUTO", "CASALINI", "CATERHAM CARS", "CHANGAN", "CHATENET", "CHERY", "CHEVROLET EUR.", "CHRYSLER", "CITROEN", "CLUB CAR", "COMM.VEH.USA", "DACIA", "DAEWOO", "DAEWOO IRAN", "DAF TRUCKS", "DAIHATSU", "DANEMARK STAND", "DATSUN", "DENZA", "DERBI MOTO", "DHL EXPRESS", "DKW", "DONGFENG AUTO", "DR AUTOMOBILES", "DR MOTOR COMPANY", "DUCATI MOTO", "EDSEL", "ERF", "FACEL VEGA", "FAW HONGQI", "FCS", "FERRARI", "FIAT/LANCIA", "FINLANDE STAN", "FISKER", "FLEET", "FLEET GERMANY", "FLEET-AUSTRALIA", "FLEET-FRANCE", "FLEET-SAUDI AR", "FLEET-SPAIN", "FLEET-UK", "FORD EUROPE", "FORD-S.AFRICA", "FORD-USA", "FORD_AUSTRALIA", "FOTON", "FREIGHTLINER", "FSO", "GAC MOTOR", "GAT", "GAZ", "GEELY", "GENERAL MOTORS", "GEO", "GILERA MOTORCYCLES", "GREATWALL AUTO", "GROOVE", "HAFEI", "HAIMA", "HANOMAG", "HARLEY-DAVIDSON", "HAVAL", "HIPHI", "HKS", "HOLDEN", "HONDA", "HONDA MOTO", "HOZON AUTO", "HUMMER", "HYCAN", "HYUNDAI", "IM MOTORS", "INEOS AUTOMOTIVE", "INFINITI", "INNOCENTI", "ISUZU", "IVECO", "JAC MOTORS", "JAGUAR", "JENSEN", "JETOUR", "KARMA AUTO", "KAWASAKI MOTO", "KIA", "KTM MOTO", "KYMCO MOTO", "LADA", "LAMBORGHINI", "LAMBRETTA", "LAND ROVER", "LATAMMO MOTO", "LDV", "LEADING IDEAL", "LEAP MOTOR", "LEVDEO", "LEXUS", "LEYLAND", "LI AUTO", "LIFAN", "LIGIER", "LML", "LONDON ELECTRIC VEHICLE C", "LONDON TAXI", "LOTUS", "LUCID MOTORS", "LUXGEN", "LYNK AND CO", "MAGIRUS", "MAHINDRA", "MALAGUTI MOTO", "MAN", "MARUTI", "MASERATI", "MATRA", "MAZDA", "MCLAREN", "MERCEDES", "MERCEDES TRUCKS", "MG", "MICROCAR", "MIDDLEBRIDGE", "MINI", "MITSUBISHI", "MITSUBISHI TRUCKS", "MORGAN", "MOSKVITCH", "MOTO GUZZI MOTORCYCLES", "MOTORCYCLES", "NAVISTAR", "NCS", "NIO", "NISSAN", "NISSAN S.AFRICA", "NORMAS UNE", "ODA", "OPEL S.AFRICA", "OPEL/VAUXHALL", "OTHER", "PANHARD", "PANTONE", "PERODUA", "PEUGEOT", "PEUGEOT MOTO", "PIAGGIO MOTO", "POLESTAR", "POLESTONES", "PORSCHE", "PRIMER", "PROTON", "QOROS", "RAL", "RAL DESIGN", "RELIANT", "RENAULT", "RENAULT TRUCKS", "RIVIAN", "ROEWE", "ROLLS ROYCE", "ROOTES", "ROVER", "ROX", "SAAB", "SAIC-GM", "SAIPA", "SAMSUNG", "SANTANA", "SCANIA TRUCKS", "SEAT", "SERES", "SETRA", "SINOTRUK", "SKODA", "SKYWELL", "SMART", "SOUEAST", "SPECTRUM", "SSANGYONG", "STUDEBAKER", "SUBARU", "SUZUKI", "SUZUKI MOTO", "SWM MOTORS", "TALBOT", "TATA", "TATRA TRUCKS", "TESLA MOTORS", "TOYOTA", "TOYOTA S.AFRICA", "TOYOTA TRUCKS", "TRABANT", "TRIUMPH", "TRIUMPH MOTO", "TVR", "UAZ", "UMM", "VESPA", "VOLGA", "VOLKSWAGEN", "VOLVO", "VOLVO TRUCKS", "VORTEX", "VOYAH", "VSLF/USVC", "VW BRAZIL", "VW SHANGHAI", "WARTBURG", "WEY", "WM MOTOR", "WULING", "XPENG MOTORS", "YAMAHA MOTO", "YUGO", "ZAZ", "ZEEKR", "ZOTYE"
     ];
 }
 
 async function get_year_drop_down() {
     return [ // 109
-        // "Year", "2027", "2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000", "1999", "1998", "1997", "1996", "1995", "1994", "1993", "1992", "1991", "1990", "1989", "1988", "1987", "1986", "1985", "1984", "1983", "1982", "1981", "1980", "1979", "1978", "1977", "1976", "1975", "1974", "1973", "1972", "1971", "1970", "1969", "1968", "1967", "1966", "1965", "1964", "1963", "1962", "1961", "1960", "1959", "1958", "1957", "1956", "1955", "1954", "1953", "1952", "1951", "1950", "1949", "1948", "1947", "1946", "1945", "1944", "1943", "1942", "1941", "1940", "1939", "1938", "1937", "1936", "1935", "1934", "1933", "1932", "1931", "1930", "1929", "1928", "1927", "1926", "1925", "1924", "1923", "1922", "1921", "1920"
-        "Year", "2027", "2026",//, "2025" "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000", "1999", "1998", "1997", "1996", "1995", "1994", "1993", "1992", "1991", "1990", "1989", "1988", "1987", "1986", "1985", "1984", "1983", "1982", "1981", "1980", "1979", "1978", "1977", "1976", "1975", "1974", "1973", "1972", "1971", "1970", "1969", "1968", "1967", "1966", "1965", "1964", "1963", "1962", "1961", "1960", "1959", "1958", "1957", "1956", "1955", "1954", "1953", "1952", "1951", "1950", "1949", "1948", "1947", "1946", "1945", "1944", "1943", "1942", "1941", "1940", "1939", "1938", "1937", "1936", "1935", "1934", "1933", "1932", "1931", "1930", "1929", "1928", "1927", "1926", "1925", "1924", "1923", "1922", "1921", "1920"
+         "Year", "2027", "2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000", "1999", "1998", "1997", "1996", "1995", "1994", "1993", "1992", "1991", "1990", "1989", "1988", "1987", "1986", "1985", "1984", "1983", "1982", "1981", "1980", "1979", "1978", "1977", "1976", "1975", "1974", "1973", "1972", "1971", "1970", "1969", "1968", "1967", "1966", "1965", "1964", "1963", "1962", "1961", "1960", "1959", "1958", "1957", "1956", "1955", "1954", "1953", "1952", "1951", "1950", "1949", "1948", "1947", "1946", "1945", "1944", "1943", "1942", "1941", "1940", "1939", "1938", "1937", "1936", "1935", "1934", "1933", "1932", "1931", "1930", "1929", "1928", "1927", "1926", "1925", "1924", "1923", "1922", "1921", "1920"
+        // "Year", "2027", "2026",//, "2025" "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000", "1999", "1998", "1997", "1996", "1995", "1994", "1993", "1992", "1991", "1990", "1989", "1988", "1987", "1986", "1985", "1984", "1983", "1982", "1981", "1980", "1979", "1978", "1977", "1976", "1975", "1974", "1973", "1972", "1971", "1970", "1969", "1968", "1967", "1966", "1965", "1964", "1963", "1962", "1961", "1960", "1959", "1958", "1957", "1956", "1955", "1954", "1953", "1952", "1951", "1950", "1949", "1948", "1947", "1946", "1945", "1944", "1943", "1942", "1941", "1940", "1939", "1938", "1937", "1936", "1935", "1934", "1933", "1932", "1931", "1930", "1929", "1928", "1927", "1926", "1925", "1924", "1923", "1922", "1921", "1920"
     ];
 }
 async function get_related_colors_drop_down() {
     return [//14
-        // "Related Colors", "Bumper", "Chassis", "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
-        "Related Colors", "Bumper", "Chassis"// "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
+         "Related Colors", "Bumper", "Chassis", "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
+        //"Related Colors", "Bumper", "Chassis"// "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
     ];
 }
 async function get_color_family_drop_down() {
@@ -526,10 +524,10 @@ async function loadFromPage(res) {
                         appendCurrentRowToCsv(row);
                         // console.log("solid_effect_drop_down index :" + solid_effect_drop_down_index, solid_effect_drop_down_index);
 
-                        if (total_count > 100) {
-                            shouldStop = true; // Set the flag to true
-                            break; // Exit the innermost loop
-                        }
+                        // if (total_count > 100) {
+                        //     shouldStop = true; // Set the flag to true
+                        //     break; // Exit the innermost loop
+                        // }
                         // console.log("starting  break");
 
                         // break;
@@ -559,11 +557,8 @@ async function loadFromPage(res) {
 async function scrapDataFromPages() {
     let data_arr = [];
     let hasNextPage = true;
-
-
     await setSearchFilters(page);
     console.log('after setSearchFilters');
-
 
     while (hasNextPage) {
         let containers_details = null;
@@ -604,9 +599,8 @@ async function scrapDataFromPages() {
             const container = containers_details[i];
             const containerHandles = await page.$$('#digital_formula > .root');
             const hasMultitoneAccess = await containerHandles[i].$('.formula-multitone-access');
-            let infoColorUrl = '';
-            let detailColorUrl = '';
             let buttons = null;
+            let extracted_data = {};
             if (hasMultitoneAccess) {
                 console.log('multi tone found', container);
                 // await setSearchFilters(multitone_page, { make_dropdown: 1, description: container.description });
@@ -648,31 +642,31 @@ async function scrapDataFromPages() {
                     
                     
                     for (let index_btn = 0; index_btn < buttons.length; index_btn++) {
-                        await scrapDataFromList(multitone_page, multitone_page_containers_details[index_btn], buttons, index_btn, data_arr);
-                        // continue;
+                        extracted_data = await scrapDataFromList(multitone_page, multitone_page_containers_details[index_btn], buttons, index_btn, data_arr);
+                        await saveToExcel([extracted_data], 'paint/sheets/paint.csv');
                     }
                     hasNextMultiPage = await goToNextPage(multitone_page);
                 }
             }
             else {
-                // continue;
-                await scrapDataFromList(page, container, buttons, i, data_arr);
+                continue;
+                extracted_data = await scrapDataFromList(page, container, buttons, i, data_arr);
+                await saveToExcel([extracted_data], 'paint/sheets/paint.csv');
+
             }
+            console.log('saving it to csv',[extracted_data]);
         }
         hasNextPage = await goToNextPage(page);
         // hasNextPage = false;
     }
 
     console.log('final scraped data data', data_arr);
-    await saveToExcel(data_arr, 'paint/paint.csv');
+    // await saveToExcel(data_arr, 'paint/paint.csv');
 }
 
 async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
-    let hasNextPage = true;
     console.log(`Processing scrapDataFromList 1`);
-
-    // while (hasNextPage) {
-    console.log(`Processing scrapDataFromList 2`);
+    let combinedData = {};
 
     buttons = await listpage.$$('#digital_formula > .root button[data-original-title="Color Information"]');
 
@@ -688,12 +682,12 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
             const id = urlAndIdMatch[2];
             let scrap_details = await scrapFormaulaDetailsData(container.sid, container.familyId);
             for (const scrap_detail of scrap_details) {
-                let combinedData = { ...container, ...scrap_detail };
+                combinedData = { ...container, ...scrap_detail };
                 data_arr.push(combinedData);
             }
             infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
             detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
-            console.log('infoColorUrl:', infoColorUrl);
+            // console.log('infoColorUrl:', infoColorUrl);
             console.log('detailColorUrl:', detailColorUrl);
 
             // await scrapColorInfoData(id);
@@ -703,9 +697,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
             console.error('Failed to extract URL and ID from onclick value');
         }
     }
-    // hasNextPage = await goToNextPage(listpage);
-
-    // }
+    return combinedData;
 
 }
 
@@ -827,12 +819,116 @@ async function getColorInfo(page, i) {
     return iframeData;
 }
 
-async function saveToExcel(dataArray, fileName) {
+async function saveToExcel_d(dataArray, fileName='paint/sheets/paint.csv') {
+    const makeDropdown = await get_make_drop_down();
+    let filePath= 'paint/sheets/';
+    await fs.promises.mkdir(filePath, { recursive: true });
+    fileName = `${filePath}/${makeDropdown[filters_obj.make_dropdown]}.csv`;
     const worksheet = xlsx.utils.json_to_sheet(dataArray);
     const workbook = xlsx.utils.book_new();
     xlsx.utils.book_append_sheet(workbook, worksheet, 'Paint Data');
     xlsx.writeFile(workbook, fileName);
     console.log(`Excel file saved as ${fileName}`);
+}
+
+
+async function saveToExcel(dataArray, fileName = 'paint/sheets/paint.csv') {
+    console.log("excel 1");
+    const makeDropdown = await get_make_drop_down();
+    const filePath = 'paint/sheets/';
+    console.log("excel 2");
+
+    // Ensure the directory exists
+    fs.mkdirSync(path.join('paint', 'sheets'), { recursive: true });
+    console.log("excel 3");
+
+    // Construct the full file path
+    fileName = path.join(filePath, `${makeDropdown[filters_obj.make_dropdown]}.csv`);
+    console.log("excel 4");
+
+    // Clean dataArray: Remove newlines, line breaks, and tabs
+    const cleanedDataArray = dataArray.map(row => {
+        const cleanedRow = {};
+        for (const key in row) {
+            if (row.hasOwnProperty(key)) {
+                // Replace newlines, line breaks, and tabs with a space or remove them
+                cleanedRow[key] = row[key]
+                    .replace(/\n/g, ' ') // Replace newlines with a space
+                    .replace(/<br>/g, ' ') // Replace <br> with a space
+                    .replace(/\t/g, ' '); // Replace tabs with a space
+            }
+        }
+        return cleanedRow;
+    });
+    console.log('Cleaned Data:', cleanedDataArray);
+
+    // Convert cleanedDataArray to CSV format
+    const csvData = cleanedDataArray.map(row => {
+        return Object.values(row).join(',');
+    }).join('\n');
+
+    // Append data to the file
+    if (fs.existsSync(fileName)) {
+        console.log("excel 5");
+
+        // Append new data to the existing file
+        fs.appendFileSync(fileName, `\n${csvData}`);
+        console.log("excel 6");
+    } else {
+        console.log("excel 7");
+
+        // Create a new file and write the header and data
+        const header = Object.keys(cleanedDataArray[0]).join(',');
+        fs.writeFileSync(fileName, `${header}\n${csvData}`);
+        console.log("excel 8");
+    }
+
+    console.log(`Data appended to CSV file: ${fileName}`);
+}
+
+async function saveToExcelCreateSheet(dataArray, fileName='paint/sheets/paint.xlsx') {
+    let workbook;
+    let worksheet;
+    const makeDropdown = await get_make_drop_down();
+    console.log('makeDropdown:', makeDropdown);
+    console.log('New Data:', dataArray);
+
+    const sheetName = makeDropdown[filters_obj.make_dropdown]; // Dynamic sheet name
+    let filePath= 'paint/sheets/';
+    await fs.promises.mkdir(filePath, { recursive: true });
+    fileName= filePath+sheetName+'.xlsx';
+    // Check if the file already exists
+    if (fs.existsSync(fileName)) {
+        // Read the existing workbook
+        workbook = xlsx.readFile(fileName);
+        // Check if the sheet already exists
+        if (workbook.Sheets[sheetName]) {
+            // If the sheet exists, get the data and combine it with the new data
+            worksheet = workbook.Sheets[sheetName];
+            const existingData = xlsx.utils.sheet_to_json(worksheet);
+            console.log('Existing Data:', existingData);
+            const combinedData = existingData.concat(dataArray);
+            console.log('Combined Data:', combinedData);
+
+            // Update the existing sheet with the combined data
+            xlsx.utils.sheet_add_json(worksheet, combinedData, { skipHeader: true, origin: -1 });
+        } else {
+            // If the sheet doesn't exist, create a new sheet
+            console.log('Creating new sheet:', sheetName);
+            worksheet = xlsx.utils.json_to_sheet(dataArray);
+            xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
+        }
+    } else {
+        // If the file doesn't exist, create a new workbook and worksheet
+        console.log('Creating new workbook and sheet:', sheetName);
+        workbook = xlsx.utils.book_new();
+        worksheet = xlsx.utils.json_to_sheet(dataArray);
+        xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
+    }
+
+    // Write the workbook to the file
+    xlsx.writeFile(workbook, fileName);
+    console.log(`Data saved to Excel file: ${fileName}, Sheet: ${sheetName}`);
 }
 app.get('/general_paint', async (req, res) => {
     try {
