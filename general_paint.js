@@ -13,7 +13,7 @@ let context;
 let page = null;
 let new_page = null;
 let multitone_page = null;
-let filters_obj={};
+let filters_obj = {};
 let interceptedRequests = [];
 const xlsx = require('xlsx');
 const { createCanvas } = require('canvas');
@@ -219,7 +219,18 @@ async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
     for (const { index, image } of canvasImages) {
         let random_number = getRandomNumber(1000, 9999);
         const base64Data = image.replace(/^data:image\/png;base64,/, '');
-        let imagePath = path.join('paint/colors', `${random_number}_${id}_${sid}_${index}.png`);
+        // filters_obj = {
+        //     make_dropdown: get_make_drop_down,
+        //     year: get_year_drop_down,
+        //     plastic_parts: get_related_colors_drop_down,
+        //     groupdesc: get_color_family_drop_down,
+        //     effect: get_solid_effect_drop_down,
+        // };
+
+        let color_path = await getColorPath();
+        
+        let imagePath = path.join(color_path, `${random_number}_${id}_${sid}_${index}.png`);
+        // let imagePath = path.join('paint/colors', `${random_number}_${id}_${sid}_${index}.png`);
         images_arr.push(imagePath);
         fs.writeFileSync(imagePath, base64Data, 'base64', (err) => {
             if (err) console.error(`Error saving image ${index}:`, err);
@@ -227,6 +238,26 @@ async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
         });
     }
     return images_arr;
+}
+
+async function getColorPath() {
+    const makeDropdown = await get_make_drop_down();
+    const yearDropdown = await get_year_drop_down();
+    const relatedColorsDropdown = await get_related_colors_drop_down();
+    const colorFamilyDropdown = await get_color_family_drop_down();
+    const solidEffectDropdown = await get_solid_effect_drop_down();
+    
+    const color_path = path.join(
+        'paint',
+        'colors',
+        makeDropdown[filters_obj.make_dropdown],
+        yearDropdown[filters_obj.year],
+        relatedColorsDropdown[filters_obj.plastic_parts],
+        colorFamilyDropdown[filters_obj.groupdesc],
+        solidEffectDropdown[filters_obj.effect]
+    );
+        await fs.promises.mkdir(color_path, { recursive: true });
+    return color_path;
 }
 
 async function scrapColorInfoData(id) {
@@ -258,7 +289,7 @@ async function scrapColorInfoData(id) {
     return data;
 }
 
-async function setSearchFilters(selected_page,description=null) {
+async function setSearchFilters(selected_page, description = null) {
     filters_obj.description = description;
     let filters = filters_obj;
 
@@ -271,7 +302,7 @@ async function setSearchFilters(selected_page,description=null) {
     // groupdesc:color_family_drop_down_index,
     // effect:solid_effect_drop_down_index,
 
-    console.log('my filters set : ',filters);
+    console.log('my filters set : ', filters);
 
     await selected_page.waitForSelector('#make_dropdown');
     if (filters.make_dropdown !== null) {
@@ -543,7 +574,7 @@ async function scrapDataFromPages() {
                 new Promise((resolve, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
             ]);
             // await page.waitForSelector('#digital_formula');
-             containers_details = await page.$$eval('#digital_formula > .root', (elements) => {
+            containers_details = await page.$$eval('#digital_formula > .root', (elements) => {
                 return elements.map(el => {
                     return {
                         familyId: el.getAttribute('family_id'),
@@ -580,24 +611,24 @@ async function scrapDataFromPages() {
                 console.log('multi tone found', container);
                 // await setSearchFilters(multitone_page, { make_dropdown: 1, description: container.description });
                 // filters_obj.description = container.description;
-                await setSearchFilters(multitone_page,container.description);
+                await setSearchFilters(multitone_page, container.description);
                 let hasNextMultiPage = true;
                 while (hasNextMultiPage) {
                     buttons = await multitone_page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
                     for (let index_btn = 0; index_btn < buttons.length; index_btn++) {
                         await scrapDataFromList(multitone_page, container, buttons, index_btn, data_arr);
-                        continue;
+                        // continue;
                     }
                     hasNextMultiPage = await goToNextPage(multitone_page);
                 }
             }
             else {
-                continue;
+                // continue;
                 await scrapDataFromList(page, container, buttons, i, data_arr);
             }
         }
-        // hasNextPage = await goToNextPage(page);
-        hasNextPage = false;
+        hasNextPage = await goToNextPage(page);
+        // hasNextPage = false;
     }
 
     console.log('final scraped data data', data_arr);
