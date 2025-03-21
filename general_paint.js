@@ -615,8 +615,40 @@ async function scrapDataFromPages() {
                 let hasNextMultiPage = true;
                 while (hasNextMultiPage) {
                     buttons = await multitone_page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
+                    try {
+                        // Wait for the selector with a timeout of 10 seconds
+                        await Promise.race([
+                            multitone_page.waitForSelector('#digital_formula', { timeout: 10000 }),
+                            new Promise((resolve, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+                        ]);
+                        // await page.waitForSelector('#digital_formula');
+                        multitone_page_containers_details = await multitone_page.$$eval('#digital_formula > .root', (elements) => {
+                            return elements.map(el => {
+                                return {
+                                    familyId: el.getAttribute('family_id'),
+                                    sid: el.getAttribute('sid'),
+                                    make: el.getAttribute('make'),
+                                    description: el.getAttribute('desc'),
+                                    url: el.getAttribute('url'),
+                                    content: el.innerText.trim()
+                                };
+                            });
+                        });
+                    } catch (error) {
+                        // If the selector is not found within 10 seconds, exit the loop
+                        if (error.message === 'Timeout') {
+                            console.log('Timeout: #digital_formula not found within 10 seconds');
+                            break;
+                        } else {
+                            // Handle other errors if necessary
+                            console.error('Error setSearchFilters :', error);
+                            break;
+                        }
+                    }
+                    
+                    
                     for (let index_btn = 0; index_btn < buttons.length; index_btn++) {
-                        await scrapDataFromList(multitone_page, container, buttons, index_btn, data_arr);
+                        await scrapDataFromList(multitone_page, multitone_page_containers_details[index_btn], buttons, index_btn, data_arr);
                         // continue;
                     }
                     hasNextMultiPage = await goToNextPage(multitone_page);
