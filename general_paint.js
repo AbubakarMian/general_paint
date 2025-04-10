@@ -523,7 +523,7 @@ async function loadFromPage(res) {
     let shouldStop = false; // Flag to control loop termination
     let total_count = 0;
     const retryOptions = {
-        maxRetries: 30,           // 30 retries
+        maxRetries: 15,           // 30 retries
         initialDelay: 1000,       // Starting with 1 second delay
         maxDelay: 10 * 60 * 1000  // Up to 10 minutes total wait time
     };
@@ -547,15 +547,15 @@ async function loadFromPage(res) {
                         };
 
                         try {
-                            await scrapDataFromPages();
-                            // await retryWithBackoff(
-                            //     async () => {
-                            //         await scrapDataFromPages();
-                            //         return true;
-                            //     },
-                            //     retryOptions.maxRetries,
-                            //     retryOptions.initialDelay
-                            // );
+                            // await scrapDataFromPages();
+                            await retryWithBackoff(
+                                async () => {
+                                    await scrapDataFromPages();
+                                    return true;
+                                },
+                                retryOptions.maxRetries,
+                                retryOptions.initialDelay
+                            );
                             const row = [
                                 make_drop_down_index, make_drop_down[make_drop_down_index],
                                 year_drop_down_index, year_drop_down[year_drop_down_index],
@@ -603,9 +603,9 @@ async function loadFromPage(res) {
 
 async function recoverPage() {
     try {
-        await page.reload({ waitUntil: 'networkidle0', timeout: 60000 });
+        await page.reload();
         //   await page.waitForSelector('#plastic_parts', { timeout: 60000 });
-        await new_page.reload({ waitUntil: 'networkidle0', timeout: 60000 });
+        await new_page.reload();
         //   await new_page.waitForSelector('#plastic_parts', { timeout: 60000 });
         let randomWaitTime = getRandomNumber(5500, 7500);
         await page.waitForTimeout(randomWaitTime);
@@ -615,7 +615,7 @@ async function recoverPage() {
         return false;
     }
 }
-async function retryWithBackoff(operation, maxRetries = 30, initialDelay = 1000) {
+async function retryWithBackoff(operation, maxRetries = 15, initialDelay = 1000) {
     let lastError;
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -645,6 +645,8 @@ async function has_digital_formula(formula_page, selector) {
     let ERROR_MESSAGE = 'We could not find any formulas. Try to modify your search.';
     while (retryCount < MAX_RETRIES) {
         try {
+            let randomWaitTime = getRandomNumber(1500, 2500);
+            await formula_page.waitForTimeout(randomWaitTime);
             let errorAlert = await formula_page.$('.alert.alert-danger');
             if (errorAlert) {
                 let errorText = await formula_page.evaluate(el => el.textContent.trim(), errorAlert);
