@@ -446,7 +446,7 @@ async function get_related_colors_drop_down() {
 async function get_color_family_drop_down() {
     return [//13
         // "Color Family", "BEIGE", "BLACK", "BLANK", "BLUE", "BROWN", "GREEN", "GREY", "ORANGE", "RED", "VIOLET", "WHITE", "YELLOW"
-        "Color Family", "BEIGE", "BLACK", //"BLANK", "BLUE", "BROWN", "GREEN", "GREY", "ORANGE", "RED", "VIOLET", "WHITE", "YELLOW"
+        "Color Family", "BEIGE", "BLACK", "BLANK", "BLUE", "BROWN", "GREEN", "GREY", "ORANGE", "RED", "VIOLET", "WHITE", "YELLOW"
     ];
 }
 async function get_solid_effect_drop_down() {
@@ -566,13 +566,6 @@ async function loadFromPage(res) {
                             writeCurrentRowToCsv(row);
                             appendCurrentRowToCsv(row);
 
-                            // if (total_count > 100) {
-                            //     shouldStop = true; // Set the flag to true
-                            //     break; // Exit the innermost loop
-                            // }
-
-                            // break;
-
                             total_count++;
                         } catch (error) {
                             console.error(`Final attempt failed after ${retryOptions.maxRetries} retries:`, error);
@@ -593,8 +586,6 @@ async function loadFromPage(res) {
         if (shouldStop) break; // Exit the make_drop_down loop
         year_drop_down_index = 0;
     }
-    // return;
-    // await setSearchFilters(page, { make_dropdown: 4, description: null });
 
     return;
 
@@ -682,7 +673,7 @@ async function scrapDataFromPages() {
     let descriptionStack = [];
     let hasNextPage = true;
     await setSearchFilters(page);
-
+    // return;
     while (hasNextPage) {
         let containers_details = null;
         try {
