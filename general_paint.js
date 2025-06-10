@@ -494,31 +494,31 @@ async function loadFromPage(res) {
     let color_family_drop_down = await get_color_family_drop_down();
     let solid_effect_drop_down = await get_solid_effect_drop_down();
     const lastRow = readLastRowFromCsv(current_filter_csv);
-    let make_drop_down_index = 0;
-    let year_drop_down_index = 0;
+    let make_drop_down_index = 1;//0
+    let year_drop_down_index = 1;//0
     let related_colors_drop_down_index = 0;
     let color_family_drop_down_index = 0;
     let solid_effect_drop_down_index = 0;
     let starting_from_csv_skip_loop = false;
-    if (lastRow) {
-        make_drop_down_index = parseInt(lastRow[0]);
-        year_drop_down_index = parseInt(lastRow[2]);
-        related_colors_drop_down_index = parseInt(lastRow[4]);
-        color_family_drop_down_index = parseInt(lastRow[6]);
-        solid_effect_drop_down_index = parseInt(lastRow[8]);
-        starting_from_csv_skip_loop = true;
-    }
-    else {
-        const all_completed = readLastRowFromCsv(all_completed_filter_csv);
-        if (all_completed) {
-            make_drop_down_index = parseInt(all_completed[0]);
-            year_drop_down_index = parseInt(all_completed[2]);
-            related_colors_drop_down_index = parseInt(all_completed[4]);
-            color_family_drop_down_index = parseInt(all_completed[6]);
-            solid_effect_drop_down_index = parseInt(all_completed[8]);
-            starting_from_csv_skip_loop = true;
-        }
-    }
+    // if (lastRow) {
+    //     make_drop_down_index = parseInt(lastRow[0]);
+    //     year_drop_down_index = parseInt(lastRow[2]);
+    //     related_colors_drop_down_index = parseInt(lastRow[4]);
+    //     color_family_drop_down_index = parseInt(lastRow[6]);
+    //     solid_effect_drop_down_index = parseInt(lastRow[8]);
+    //     starting_from_csv_skip_loop = true;
+    // }
+    // else {
+    //     const all_completed = readLastRowFromCsv(all_completed_filter_csv);
+    //     if (all_completed) {
+    //         make_drop_down_index = parseInt(all_completed[0]);
+    //         year_drop_down_index = parseInt(all_completed[2]);
+    //         related_colors_drop_down_index = parseInt(all_completed[4]);
+    //         color_family_drop_down_index = parseInt(all_completed[6]);
+    //         solid_effect_drop_down_index = parseInt(all_completed[8]);
+    //         starting_from_csv_skip_loop = true;
+    //     }
+    // }
 
     let shouldStop = false; // Flag to control loop termination
     let total_count = 0;
@@ -584,7 +584,7 @@ async function loadFromPage(res) {
             related_colors_drop_down_index = 0;
         }
         if (shouldStop) break; // Exit the make_drop_down loop
-        year_drop_down_index = 0;
+        year_drop_down_index = 1;//0
     }
 
     return;
