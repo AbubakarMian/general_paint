@@ -55,7 +55,7 @@ async function loadUrl() {
 
 
 }
-async function loginPage(page) {
+async function loginPage_d(page) {
 
     const usernameSelector = '#loginform-username';
     const passwordSelector = '#loginform-password';
@@ -71,6 +71,63 @@ async function loginPage(page) {
     await Promise.all([
         page.click(submitSelector),
     ]);
+}
+
+async function loginPage(page) {
+    const LOGIN_URL = 'https://generalpaint.info/v2/site/login';
+    const SEARCH_URL = 'https://generalpaint.info/v2/search';
+    const LOGOUT_SELECTOR = 'form[action*="/v2/site/logout"]';
+
+    // Check if we're already logged in
+    try {
+        // First ensure we're on a valid page
+        if (!page.url().startsWith('https://generalpaint.info/v2/')) {
+            await page.goto(SEARCH_URL, { waitUntil: 'domcontentloaded' });
+        }
+
+        // Look for either logout form or user profile indicator
+        await page.waitForSelector(LOGOUT_SELECTOR, { timeout: 9000 });
+        console.log('Already logged in');
+        return;
+    } catch {
+        console.log('Not logged in - proceeding with login');
+    }
+
+    // If we're not on login page, go there
+    // if (!page.url().includes('/site/login')) {
+    //     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+    // }
+
+    // Perform login
+    const usernameSelector = '#loginform-username';
+    const passwordSelector = '#loginform-password';
+    const submitSelector = "[name='login-button']";
+
+    try {
+        await page.waitForSelector(usernameSelector, { timeout: 10000 });
+        await page.fill(usernameSelector, 'johnnybrownlee87');
+
+        await page.waitForSelector(passwordSelector, { timeout: 10000 });
+        await page.fill(passwordSelector, '7s1xpcnjqQ');
+
+        // Click submit and wait for navigation
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle', timeout: 15000 }),
+            page.click(submitSelector),
+        ]);
+
+        // Verify successful login
+        try {
+            await page.waitForSelector(LOGOUT_SELECTOR, { timeout: 5000 });
+            console.log('Login successful');
+        } catch {
+            console.error('Login failed:', error);
+            // throw new Error('Login verification failed - logout selector not found');
+        }
+    } catch (error) {
+        console.error('Login failed:', error);
+        // throw error; // Re-throw to handle in calling function
+    }
 }
 
 
@@ -264,62 +321,63 @@ async function scrapColorInfoData(id) {
 }
 
 async function setSearchFilters(selected_page, description = null) {
-    try {
+    await loginPage(selected_page);
+    for (let try_to_load = 0; try_to_load < 5; try_to_load++) {
+        try {
+            filters_obj.description = description;
+            let filters = filters_obj;
 
-        filters_obj.description = description;
-        let filters = filters_obj;
+            console.log('setSearchFilters filters', filters_obj);
+            let randomWaitTime = getRandomNumber(1000, 1500);
 
-        console.log('filters', filters_obj);
-        let randomWaitTime = getRandomNumber(1000, 1500);
-        // await selected_page.waitForTimeout(randomWaitTime);
-        // description: null,
-        // make_dropdown: make_drop_down_index,
-        // year:year_drop_down_index,
-        // plastic_parts:related_colors_drop_down_index,
-        // groupdesc:color_family_drop_down_index,
-        // effect:solid_effect_drop_down_index,
-
-        await selected_page.waitForSelector('#make_dropdown');
-        if (filters.make_dropdown !== null) {
-            await selected_page.selectOption('#make_dropdown', { index: filters.make_dropdown });
-        }
-        if (filters.year !== null) {
-            await selected_page.selectOption('#year', { index: filters.year });
-        }
-        if (filters.plastic_parts !== null) {
-            await selected_page.evaluate(() => {
-                const selectElement = document.querySelector('#plastic_parts');
-                for (let option of selectElement.options) {
-                    option.selected = false;
-                }
-            });
-            // if (filters.plastic_parts !== 0) {
-            if (filters.plastic_parts > 2) {
-                await selected_page.selectOption('#plastic_parts', { index: (filters.plastic_parts-1) });
+            // await selected_page.waitForSelector('#make_dropdown');
+            await selected_page.waitForSelector('#make_dropdown', { timeout: 5000 });
+            if (filters.make_dropdown !== null) {
+                await selected_page.selectOption('#make_dropdown', { index: filters.make_dropdown });
             }
-        }
-        if (filters.groupdesc !== null) {
-            await selected_page.selectOption('#groupdesc', { index: filters.groupdesc });
-        }
-        if (filters.effect !== null) {
-            await selected_page.selectOption('#effect', { index: filters.effect });
-        }
-        if (filters.description !== null) {
-            await selected_page.fill('#description', filters.description);
-        }
+            if (filters.year !== null) {
+                await selected_page.selectOption('#year', { index: filters.year });
+            }
+            if (filters.plastic_parts !== null) {
+                await selected_page.evaluate(() => {
+                    const selectElement = document.querySelector('#plastic_parts');
+                    for (let option of selectElement.options) {
+                        option.selected = false;
+                    }
+                });
+                // if (filters.plastic_parts !== 0) {
+                if (filters.plastic_parts > 2) {
+                    await selected_page.selectOption('#plastic_parts', { index: (filters.plastic_parts - 1) });
+                }
+            }
+            if (filters.groupdesc !== null) {
+                await selected_page.selectOption('#groupdesc', { index: filters.groupdesc });
+            }
+            if (filters.effect !== null) {
+                await selected_page.selectOption('#effect', { index: filters.effect });
+            }
+            if (filters.description !== null) {
+                await selected_page.fill('#description', filters.description);
+            }
 
 
-        let submitButtonSelector = '.btn.btn-success.btn-lg.mr-3';
-        await Promise.all([
-            selected_page.click(submitButtonSelector),
-        ]);
+            let submitButtonSelector = '.btn.btn-success.btn-lg.mr-3';
+            await Promise.all([
+                selected_page.click(submitButtonSelector),
+            ]);
 
-        await selected_page.waitForTimeout(randomWaitTime);
+            await selected_page.waitForTimeout(randomWaitTime);
+            return;
+        } catch (error) {
+            console.error('Error in setSearchfilter 1 :', error);
+            await selected_page.goto('https://generalpaint.info/v2/search');
+            await loginPage(selected_page);
+            console.error('Error in setSearchfilter 2 :');
+            await selected_page.waitForTimeout(5000);
+            console.error('Error in setSearchfilter 3 :');
 
-    } catch (error) {
-        console.error('Error in setSearchfilter :', error);
-        return 1;
-        throw error;
+
+        }
     }
 }
 
@@ -355,7 +413,7 @@ const goToNextPage = async (page) => {
         // Get the next page item
         const nextPageItem = await activePageItem.evaluateHandle(el => el.nextElementSibling);
         const nextPageElement = await nextPageItem.asElement();
-        
+
         // If no next sibling exists, we're on the last page
         if (!nextPageElement) {
             console.log('Already on last page - no next sibling');
@@ -500,25 +558,25 @@ async function loadFromPage(res) {
     let color_family_drop_down_index = 0;
     let solid_effect_drop_down_index = 0;
     let starting_from_csv_skip_loop = false;
-    // if (lastRow) {
-    //     make_drop_down_index = parseInt(lastRow[0]);
-    //     year_drop_down_index = parseInt(lastRow[2]);
-    //     related_colors_drop_down_index = parseInt(lastRow[4]);
-    //     color_family_drop_down_index = parseInt(lastRow[6]);
-    //     solid_effect_drop_down_index = parseInt(lastRow[8]);
-    //     starting_from_csv_skip_loop = true;
-    // }
-    // else {
-    //     const all_completed = readLastRowFromCsv(all_completed_filter_csv);
-    //     if (all_completed) {
-    //         make_drop_down_index = parseInt(all_completed[0]);
-    //         year_drop_down_index = parseInt(all_completed[2]);
-    //         related_colors_drop_down_index = parseInt(all_completed[4]);
-    //         color_family_drop_down_index = parseInt(all_completed[6]);
-    //         solid_effect_drop_down_index = parseInt(all_completed[8]);
-    //         starting_from_csv_skip_loop = true;
-    //     }
-    // }
+    if (lastRow) {
+        make_drop_down_index = parseInt(lastRow[0]);
+        year_drop_down_index = parseInt(lastRow[2]);
+        related_colors_drop_down_index = parseInt(lastRow[4]);
+        color_family_drop_down_index = parseInt(lastRow[6]);
+        solid_effect_drop_down_index = parseInt(lastRow[8]);
+        starting_from_csv_skip_loop = true;
+    }
+    else {
+        const all_completed = readLastRowFromCsv(all_completed_filter_csv);
+        if (all_completed) {
+            make_drop_down_index = parseInt(all_completed[0]);
+            year_drop_down_index = parseInt(all_completed[2]);
+            related_colors_drop_down_index = parseInt(all_completed[4]);
+            color_family_drop_down_index = parseInt(all_completed[6]);
+            solid_effect_drop_down_index = parseInt(all_completed[8]);
+            starting_from_csv_skip_loop = true;
+        }
+    }
 
     let shouldStop = false; // Flag to control loop termination
     let total_count = 0;
@@ -656,7 +714,7 @@ async function has_digital_formula(formula_page, selector) {
         } catch (error) {
             retryCount++;
             console.log(`Retry ${retryCount}/${MAX_RETRIES} for selector "${selector}"...`);
-
+            await loginPage(formula_page);
             // Optional: Add delay between retries
             if (retryCount < MAX_RETRIES) {
                 await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
@@ -679,7 +737,7 @@ async function scrapDataFromPages() {
         try {
             // Wait for the selector with a timeout of 10 seconds
             if (!(await has_digital_formula(page, '#digital_formula'))) {
-                hasNextPage=false;
+                hasNextPage = false;
                 break;
             }
 
@@ -715,7 +773,7 @@ async function scrapDataFromPages() {
 
                 if (hasMultitoneAccess) {
                     console.log('Multitone found in container:', container.description);
-                    descriptionStack = [container.description];
+                    descriptionStack.push(container.description);
                     console.log('descriptionStack:', descriptionStack);
 
                 } else {
@@ -740,7 +798,7 @@ async function scrapDataFromPages() {
                 while (hasNextMultiPage) {
                     // Wait for containers to load in multitone page
                     if (!(await has_digital_formula(multitone_page, '#digital_formula'))) {
-                        hasNextMultiPage=false;
+                        hasNextMultiPage = false;
                         break;
                     }
 
