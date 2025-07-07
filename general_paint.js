@@ -735,6 +735,8 @@ async function scrapDataFromPages() {
     let data_arr = [];
     let descriptionStack = [];
     let hasNextPage = true;
+    currentRecursionDepth = 0;
+    visitedMultitones.clear();
     await setSearchFilters(page);
     // return;
     while (hasNextPage) {
@@ -777,9 +779,16 @@ async function scrapDataFromPages() {
                 let extracted_data = {};
 
                 if (hasMultitoneAccess) {
-                    console.log('Multitone found in container:', container.description);
-                    descriptionStack.push(container.description);
-                    console.log('descriptionStack:', descriptionStack);
+                    if (visitedMultitones.size < MAX_VISITED_ENTRIES
+                        && !visitedMultitones.has(container.description)) {
+                        console.log('Multitone found in container:', container.description);
+                        descriptionStack.push({
+                            description: container.description,
+                            depth: currentRecursionDepth + 1
+                        });
+                        visitedMultitones.add(container.description);
+                        console.log('descriptionStack:', descriptionStack);
+                    }
 
                 } else {
                     // continue;
@@ -796,8 +805,15 @@ async function scrapDataFromPages() {
                 console.log('Saved container data:', container.description);
             }
             while (descriptionStack.length > 0) {
-                const currentDescription = descriptionStack.pop();
-                await setSearchFilters(multitone_page, currentDescription);
+                const { description, depth } = descriptionStack.pop();
+                currentRecursionDepth = depth;
+
+                if (currentRecursionDepth > MAX_RECURSION_DEPTH) {
+                    console.warn('Maximum recursion depth reached, skipping:', description);
+                    continue;
+                }
+
+                await setSearchFilters(multitone_page, description);
 
                 let hasNextMultiPage = true;
                 while (hasNextMultiPage) {
@@ -833,7 +849,11 @@ async function scrapDataFromPages() {
                         const stateData = `Current Page: ${currentPageNumber}\nFilters: ${JSON.stringify(filters_obj)}\n`;
                         const multitoneFile = 'multitone_filter.txt';
                         if (mtContainer.isMultitone) {
-                            descriptionStack.push(mtContainer.description);
+                            descriptionStack.push({
+                                description: mtContainer.description,
+                                depth: currentRecursionDepth + 1
+                            });
+                            visitedMultitones.add(mtContainer.description);
                             console.log('found one more multitone');
                             console.log(multitoneFile, stateData);
 
@@ -847,7 +867,7 @@ async function scrapDataFromPages() {
                                 j,
                                 data_arr
                             );
-                            await fs.promises.writeFile(multitoneFile, stateData);
+                            // await fs.promises.writeFile(multitoneFile, stateData);
 
                             await saveToExcel([extracted_data], 'paint/sheets/paint.csv');
                         }
