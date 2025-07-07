@@ -20,6 +20,11 @@ const { createCanvas } = require('canvas');
 let current_filter_csv = 'paint/current_filter_csv.csv';
 let all_completed_filter_csv = 'paint/all_completed_filter_csv.csv';
 
+const MAX_RECURSION_DEPTH = 15;
+const MAX_VISITED_ENTRIES = 1500000;
+let visitedMultitones = new Set();
+let currentRecursionDepth = 0;
+
 
 async function loadUrl() {
     browser = await chromium.launch({
