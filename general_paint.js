@@ -15,6 +15,7 @@ let new_page = null;
 let multitone_page = null;
 let filters_obj = {};
 let interceptedRequests = [];
+let _models_drop_down = [];
 const xlsx = require('xlsx');
 const { createCanvas } = require('canvas');
 let current_filter_csv = 'paint/current_filter_csv.csv';
@@ -60,23 +61,7 @@ async function loadUrl() {
 
 
 }
-async function loginPage_d(page) {
 
-    const usernameSelector = '#loginform-username';
-    const passwordSelector = '#loginform-password';
-    const submitSelector = "[name='login-button']";
-
-    await page.waitForSelector(usernameSelector);
-    await page.fill(usernameSelector, 'johnnybrownlee87');
-
-    await page.waitForSelector(passwordSelector);
-    await page.fill(passwordSelector, '7s1xpcnjqQ');
-    // Click submit
-    await page.waitForSelector(submitSelector);
-    await Promise.all([
-        page.click(submitSelector),
-    ]);
-}
 
 async function loginPage(page) {
     const LOGIN_URL = 'https://generalpaint.info/v2/site/login';
@@ -138,15 +123,6 @@ async function loginPage(page) {
 
 function getRandomNumber(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-async function get_val(iframe, selector, tryies) {
-    let text = await iframe.$eval(selector, el => el.innerText).catch(() => "");
-    for (let i = 0; i < tryies && text == ""; i++) {
-        text = await iframe.$eval(selector, el => el.innerText).catch(() => "");
-        await page.waitForTimeout(1500);
-    }
-    return text;
 }
 
 app.get('/loadurl', async (req, res) => {
@@ -281,6 +257,7 @@ function getUniqueName(baseName) {
 async function getColorPath() {
     const makeDropdown = await get_make_drop_down();
     const yearDropdown = await get_year_drop_down();
+    const modelDropdown = _models_drop_down;
     const relatedColorsDropdown = await get_related_colors_drop_down();
     const colorFamilyDropdown = await get_color_family_drop_down();
     const solidEffectDropdown = await get_solid_effect_drop_down();
@@ -288,8 +265,9 @@ async function getColorPath() {
     const color_path = path.join(
         'paint',
         'colors',
-        makeDropdown[filters_obj.make_dropdown],
+        makeDropdown[filters_obj.make],
         yearDropdown[filters_obj.year],
+        modelDropdown[filters_obj.model],
         relatedColorsDropdown[filters_obj.plastic_parts],
         colorFamilyDropdown[filters_obj.groupdesc],
         solidEffectDropdown[filters_obj.effect]
@@ -326,6 +304,80 @@ async function scrapColorInfoData(id) {
 }
 
 async function setSearchFilters(selected_page, description = null) {
+
+    filters_obj.description = description;
+    let filters = filters_obj;
+
+    await loginPage(selected_page);
+
+    for (let try_to_load = 0; try_to_load < 5; try_to_load++) {
+        try {
+            console.log('setSearchFilters filters', filters);
+
+            let randomWaitTime = getRandomNumber(1000, 1500);
+
+            await selected_page.waitForSelector('#make_dropdown', { timeout: 5000 });
+
+            if (filters.make != null) {
+                await selected_page.selectOption('#make_dropdown', { index: filters.make });
+                await get_model_drop_down(selected_page, filters);
+            }
+            if (filters.year != null) {
+                await selected_page.selectOption('#year', { index: filters.year });
+            }
+            if (filters.plastic_parts != null) {
+                // clear selections
+                await selected_page.selectOption('#plastic_parts', []);
+                if (filters.plastic_parts > 2) {
+                    await selected_page.selectOption('#plastic_parts', { index: filters.plastic_parts - 1 });
+                }
+
+                /////
+
+//                 await selected_page.evaluate(() => {
+//   const select = document.querySelector('#plastic_parts');
+//   if (select) {
+//     [...select.options].forEach(opt => opt.selected = false);
+//     $(select).selectpicker('refresh'); // important for bootstrap-select UI
+//   }
+// });
+
+// // Now select only one option
+// if (filters.plastic_parts > 2) {
+//   await selected_page.selectOption('#plastic_parts', { index: filters.plastic_parts - 1 });
+//   // Refresh UI again so bootstrap-select reflects the change
+//   await selected_page.evaluate(() => {
+//     $('#plastic_parts').selectpicker('refresh');
+//   });
+// }
+            }
+            if (filters.groupdesc != null) {
+                await selected_page.selectOption('#groupdesc', { index: filters.groupdesc });
+            }
+            if (filters.effect != null) {
+                await selected_page.selectOption('#effect', { index: filters.effect });
+            }
+            if (filters.description != null) {
+                await selected_page.fill('#description', filters.description);
+            }
+
+            await selected_page.waitForTimeout(500);
+
+            await selected_page.click('.btn.btn-success.btn-lg.mr-3');
+
+            await selected_page.waitForTimeout(randomWaitTime);
+            return; // ✅ success, exit function
+        } catch (error) {
+            console.error('Error in setSearchFilters attempt', try_to_load + 1, ':', error);
+            await selected_page.goto('https://generalpaint.info/v2/search');
+            await loginPage(selected_page);
+            await selected_page.waitForTimeout(5000);
+            continue; // ✅ retry next loop
+        }
+    }
+    return;
+}
+async function setSearchFilters_d(selected_page, description = null) {
     await loginPage(selected_page);
     for (let try_to_load = 0; try_to_load < 5; try_to_load++) {
         try {
@@ -337,8 +389,9 @@ async function setSearchFilters(selected_page, description = null) {
 
             // await selected_page.waitForSelector('#make_dropdown');
             await selected_page.waitForSelector('#make_dropdown', { timeout: 5000 });
-            if (filters.make_dropdown !== null) {
-                await selected_page.selectOption('#make_dropdown', { index: filters.make_dropdown });
+            if (filters.make !== null) {
+                await selected_page.selectOption('#make_dropdown', { index: filters.make });
+                await get_model_drop_down(selected_page, filters);
             }
             if (filters.year !== null) {
                 await selected_page.selectOption('#year', { index: filters.year });
@@ -364,7 +417,7 @@ async function setSearchFilters(selected_page, description = null) {
             if (filters.description !== null) {
                 await selected_page.fill('#description', filters.description);
             }
-
+            await selected_page.waitForTimeout(500);
 
             let submitButtonSelector = '.btn.btn-success.btn-lg.mr-3';
             await Promise.all([
@@ -456,36 +509,6 @@ const goToNextPage = async (page) => {
     }
 };
 
-const goToNextPage_d = async (nextpage) => {
-    try {
-        const activePageItem = await nextpage.$('.pagination li.active');
-        if (!activePageItem) {
-            return false;
-        }
-        const nextPageItem = await activePageItem.evaluateHandle((el) => el.nextElementSibling);
-        if (!nextPageItem || !(await nextPageItem.asElement())) {
-            return false;
-        }
-        const nextPageLink = await nextPageItem.$('a.page-link');
-        if (!nextPageLink) {
-            return false;
-        }
-        await Promise.all([
-            nextPageLink.click(),
-        ]);
-
-        // await nextpage.waitForSelector('#digital_formula');
-        await has_digital_formula(page, '#digital_formula');
-        // await nextpage.waitForTimeout(5000);
-
-    } catch (error) {
-        console.error('Error in goToNextPage:', error);
-        return false;
-        throw error;
-    }
-
-
-};
 
 async function get_make_drop_down() {
     return [//248
@@ -494,16 +517,38 @@ async function get_make_drop_down() {
     ];
 }
 
+async function get_model_drop_down(selected_page = null, filters) {
+    let randomWaitTime = getRandomNumber(2500, 3500);
+    await selected_page.waitForTimeout(randomWaitTime);
+    let models = [];
+    if (selected_page && filters.model !== null) {
+        models = await selected_page.$$eval('#models_dropdown option', options =>
+            options.map(o => o.textContent.trim())
+        );
+        // await selected_page.selectOption('#models_dropdown', { index: filters.model });
+
+
+        // await selected_page.click('button[data-id="models_dropdown"]');
+    await selected_page.waitForTimeout(randomWaitTime);
+        console.log('models selection : ', filters.model);
+        console.log('all models selection : ', models);
+        await selected_page.selectOption('#models_dropdown', { index: filters.model });
+        // await selected_page.click(`.dropdown-menu .dropdown-item >> text="${filters.model}"`);
+    
+    }
+    console.log(models);
+    _models_drop_down = models;
+    return models;
+}
+
 async function get_year_drop_down() {
     return [ // 109
         "Year", "2027", "2026", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000", "1999", "1998", "1997", "1996", "1995", "1994", "1993", "1992", "1991", "1990", "1989", "1988", "1987", "1986", "1985", "1984", "1983", "1982", "1981", "1980", "1979", "1978", "1977", "1976", "1975", "1974", "1973", "1972", "1971", "1970", "1969", "1968", "1967", "1966", "1965", "1964", "1963", "1962", "1961", "1960", "1959", "1958", "1957", "1956", "1955", "1954", "1953", "1952", "1951", "1950", "1949", "1948", "1947", "1946", "1945", "1944", "1943", "1942", "1941", "1940", "1939", "1938", "1937", "1936", "1935", "1934", "1933", "1932", "1931", "1930", "1929", "1928", "1927", "1926", "1925", "1924", "1923", "1922", "1921", "1920"
-        // "Year", "2027", "2026",//, "2025" "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000", "1999", "1998", "1997", "1996", "1995", "1994", "1993", "1992", "1991", "1990", "1989", "1988", "1987", "1986", "1985", "1984", "1983", "1982", "1981", "1980", "1979", "1978", "1977", "1976", "1975", "1974", "1973", "1972", "1971", "1970", "1969", "1968", "1967", "1966", "1965", "1964", "1963", "1962", "1961", "1960", "1959", "1958", "1957", "1956", "1955", "1954", "1953", "1952", "1951", "1950", "1949", "1948", "1947", "1946", "1945", "1944", "1943", "1942", "1941", "1940", "1939", "1938", "1937", "1936", "1935", "1934", "1933", "1932", "1931", "1930", "1929", "1928", "1927", "1926", "1925", "1924", "1923", "1922", "1921", "1920"
     ];
 }
 async function get_related_colors_drop_down() {
-    return [//14
-        "Related Colors", "Bumper", "Chassis", "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
-        //"Related Colors", "Bumper", "Chassis"// "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
+    return [//13 "Related Colors", 
+        "Bumper", "Chassis", "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
     ];
 }
 async function get_color_family_drop_down() {
@@ -519,7 +564,7 @@ async function get_solid_effect_drop_down() {
 }
 const writeCurrentRowToCsv = (row) => {
     const csvFilePath = current_filter_csv;
-    const header = 'Make Index,Make,Year Index,Year,Related Colors Index,Related Colors,Color Family Index,Color Family,Solid Effect Index,Solid Effect\n';
+    const header = 'Make Index,Make,Year Index,Year,Model Index,Model,Related Colors Index,Related Colors,Color Family Index,Color Family,Solid Effect Index,Solid Effect\n';
     const csvContent = header + row; // Overwrite the file with the header and current row
     fs.writeFileSync(csvFilePath, csvContent);
 };
@@ -529,7 +574,7 @@ const appendCurrentRowToCsv = (row) => {
     const csvFilePath = all_completed_filter_csv;
     const fileExists = fs.existsSync(csvFilePath);
     if (!fileExists) {
-        const header = 'Make Index,Make,Year Index,Year,Related Colors Index,Related Colors,Color Family Index,Color Family,Solid Effect Index,Solid Effect\n';
+        const header = 'Make Index,Make,Year Index,Year,Model Index,Model,Related Colors Index,Related Colors,Color Family Index,Color Family,Solid Effect Index,Solid Effect\n';
         fs.writeFileSync(csvFilePath, header); // Write the header
     }
     fs.appendFileSync(csvFilePath, row);
@@ -551,35 +596,88 @@ const readLastRowFromCsv = (csvFilePath) => {
 };
 
 async function loadFromPage(res) {
+    console.log(`step 2 `);
+
     let make_drop_down = await get_make_drop_down();
     let year_drop_down = await get_year_drop_down();
+    
+    let model_drop_down = [];
     let related_colors_drop_down = await get_related_colors_drop_down();
     let color_family_drop_down = await get_color_family_drop_down();
     let solid_effect_drop_down = await get_solid_effect_drop_down();
     const lastRow = readLastRowFromCsv(current_filter_csv);
     let make_drop_down_index = 1;//0
     let year_drop_down_index = 1;//0
+    let model_drop_down_index = 0;
     let related_colors_drop_down_index = 0;
     let color_family_drop_down_index = 0;
     let solid_effect_drop_down_index = 0;
-    let starting_from_csv_skip_loop = false;
+    // let starting_from_csv_skip_loop = false;
     if (lastRow) {
         make_drop_down_index = parseInt(lastRow[0]);
         year_drop_down_index = parseInt(lastRow[2]);
-        related_colors_drop_down_index = parseInt(lastRow[4]);
-        color_family_drop_down_index = parseInt(lastRow[6]);
-        solid_effect_drop_down_index = parseInt(lastRow[8]);
-        starting_from_csv_skip_loop = true;
+        model_drop_down_index = parseInt(lastRow[4]);
+        related_colors_drop_down_index = parseInt(lastRow[6]);
+        color_family_drop_down_index = parseInt(lastRow[8]);
+        solid_effect_drop_down_index = parseInt(lastRow[10]);
+        
+        // starting_from_csv_skip_loop = true;
     }
     else {
         const all_completed = readLastRowFromCsv(all_completed_filter_csv);
         if (all_completed) {
             make_drop_down_index = parseInt(all_completed[0]);
             year_drop_down_index = parseInt(all_completed[2]);
-            related_colors_drop_down_index = parseInt(all_completed[4]);
-            color_family_drop_down_index = parseInt(all_completed[6]);
-            solid_effect_drop_down_index = parseInt(all_completed[8]);
-            starting_from_csv_skip_loop = true;
+            model_drop_down_index = parseInt(all_completed[4]);
+            related_colors_drop_down_index = parseInt(all_completed[6]);
+            color_family_drop_down_index = parseInt(all_completed[8]);
+            solid_effect_drop_down_index = parseInt(all_completed[10]);
+            // starting_from_csv_skip_loop = true;
+        }
+    }
+    filters_obj = {
+        description: null,
+        year: year_drop_down_index,
+        make: make_drop_down_index,
+        model: model_drop_down_index,
+        plastic_parts: related_colors_drop_down_index,
+        groupdesc: color_family_drop_down_index,
+        effect: solid_effect_drop_down_index,
+    };
+    await setSearchFilters(page, null);
+
+    if(lastRow||all_completed){
+        let filter_completed = false;
+        if (solid_effect_drop_down_index >= solid_effect_drop_down.length -1) {
+            solid_effect_drop_down_index = 0;
+            color_family_drop_down_index++;
+            filter_completed = true;
+        }
+        else{
+            solid_effect_drop_down_index++;
+        }
+        
+        // If we're at the end of color_family_drop_down, reset and increment related_colors_drop_down
+        if (color_family_drop_down_index >= color_family_drop_down.length -1 && filter_completed) {
+            color_family_drop_down_index = 0;
+            related_colors_drop_down_index++;
+        }
+        
+        // If we're at the end of related_colors_drop_down, reset and increment model_drop_down
+        if (related_colors_drop_down_index >= related_colors_drop_down.length -1 && filter_completed) {
+            related_colors_drop_down_index = 0;
+            model_drop_down_index++;
+        }
+        console.log("model_drop_down:",_models_drop_down);
+        if (model_drop_down_index >= _models_drop_down.length -1 && filter_completed) {
+            model_drop_down_index = 0;
+            year_drop_down_index++;
+        }
+        
+        // If we're at the end of year_drop_down, reset and increment make_drop_down
+        if (year_drop_down_index >= year_drop_down.length -1 && filter_completed) {
+            year_drop_down_index = 0;
+            make_drop_down_index++;
         }
     }
 
@@ -590,61 +688,83 @@ async function loadFromPage(res) {
         initialDelay: 1000,       // Starting with 1 second delay
         maxDelay: 10 * 60 * 1000  // Up to 10 minutes total wait time
     };
-
+                            console.log("before combination in loop :");
+                             console.log("Processing combination in loop :");
+                             console.log("make:", make_drop_down_index, "/", make_drop_down.length);
+                             console.log("year:", year_drop_down_index, "/", year_drop_down.length);
+                             console.log("model:", model_drop_down_index, "/", _models_drop_down.length);
+                             console.log("related_colors:", related_colors_drop_down_index, "/", related_colors_drop_down.length);
+                             console.log("color_family:", color_family_drop_down_index, "/", color_family_drop_down.length);
+                             console.log("solid_effect:", solid_effect_drop_down_index, "/", solid_effect_drop_down.length);
+                    
     for (; make_drop_down_index < make_drop_down.length; make_drop_down_index++) {
         for (; year_drop_down_index < year_drop_down.length; year_drop_down_index++) {
-            for (; related_colors_drop_down_index < related_colors_drop_down.length; related_colors_drop_down_index++) {
-                for (; color_family_drop_down_index < color_family_drop_down.length; color_family_drop_down_index++) {
-                    for (; solid_effect_drop_down_index < solid_effect_drop_down.length; solid_effect_drop_down_index++) {
-                        if (starting_from_csv_skip_loop) {
-                            starting_from_csv_skip_loop = false;
-                            continue;
-                        }
-                        filters_obj = {
-                            description: null,
-                            make_dropdown: make_drop_down_index,
-                            year: year_drop_down_index,
-                            plastic_parts: related_colors_drop_down_index,
-                            groupdesc: color_family_drop_down_index,
-                            effect: solid_effect_drop_down_index,
-                        };
+            for (; model_drop_down_index < _models_drop_down.length; model_drop_down_index++) {
+                for (; related_colors_drop_down_index < related_colors_drop_down.length; related_colors_drop_down_index++) {
+                    for (; color_family_drop_down_index < color_family_drop_down.length; color_family_drop_down_index++) {
+                        for (; solid_effect_drop_down_index < solid_effect_drop_down.length; solid_effect_drop_down_index++) {
+                            // if (starting_from_csv_skip_loop) {
+                            //     starting_from_csv_skip_loop = false;
+                            //     continue;
+                            // }
+                             console.log("Processing combination in loop :");
+                             console.log("make:", make_drop_down_index, "/", make_drop_down.length);
+                             console.log("year:", year_drop_down_index, "/", year_drop_down.length);
+                             console.log("model:", model_drop_down_index, "/", model_drop_down.length);
+                             console.log("related_colors:", related_colors_drop_down_index, "/", related_colors_drop_down.length);
+                             console.log("color_family:", color_family_drop_down_index, "/", color_family_drop_down.length);
+                             console.log("solid_effect:", solid_effect_drop_down_index, "/", solid_effect_drop_down.length);
+                    
+                            filters_obj = {
+                                description: null,
+                                year: year_drop_down_index,
+                                make: make_drop_down_index,
+                                model: model_drop_down_index,
+                                plastic_parts: related_colors_drop_down_index,
+                                groupdesc: color_family_drop_down_index,
+                                effect: solid_effect_drop_down_index,
+                            };
 
-                        try {
-                            // await scrapDataFromPages();
-                            await retryWithBackoff(
-                                async () => {
-                                    await scrapDataFromPages();
-                                    return true;
-                                },
-                                retryOptions.maxRetries,
-                                retryOptions.initialDelay
-                            );
-                            const row = [
-                                make_drop_down_index, make_drop_down[make_drop_down_index],
-                                year_drop_down_index, year_drop_down[year_drop_down_index],
-                                related_colors_drop_down_index, related_colors_drop_down[related_colors_drop_down_index],
-                                color_family_drop_down_index, color_family_drop_down[color_family_drop_down_index],
-                                solid_effect_drop_down_index, solid_effect_drop_down[solid_effect_drop_down_index]
-                            ].join(',') + '\n';
-                            writeCurrentRowToCsv(row);
-                            appendCurrentRowToCsv(row);
+                            try {
+                                // await scrapDataFromPages();
+                                await retryWithBackoff(
+                                    async () => {
+                                        await scrapDataFromPages();
+                                        return true;
+                                    },
+                                    retryOptions.maxRetries,
+                                    retryOptions.initialDelay
+                                );
+                                const row = [
+                                    make_drop_down_index, make_drop_down[make_drop_down_index],
+                                    year_drop_down_index, year_drop_down[year_drop_down_index],
+                                    model_drop_down_index, _models_drop_down[model_drop_down_index],
+                                    related_colors_drop_down_index, related_colors_drop_down[related_colors_drop_down_index],
+                                    color_family_drop_down_index, color_family_drop_down[color_family_drop_down_index],
+                                    solid_effect_drop_down_index, solid_effect_drop_down[solid_effect_drop_down_index]
+                                ].join(',') + '\n';
+                                writeCurrentRowToCsv(row);
+                                appendCurrentRowToCsv(row);
 
-                            total_count++;
-                        } catch (error) {
-                            console.error(`Final attempt failed after ${retryOptions.maxRetries} retries:`, error);
-                            res.write(`data: [ERROR] ${error.message}\n\n`);
-                            // Continue to next iteration instead of breaking completely
-                            continue;
+                                total_count++;
+                            } catch (error) {
+                                console.error(`Final attempt failed after ${retryOptions.maxRetries} retries:`, error);
+                                res.write(`data: [ERROR] ${error.message}\n\n`);
+                                // Continue to next iteration instead of breaking completely
+                                continue;
+                            }
                         }
+                        solid_effect_drop_down_index = 0;
+                        if (shouldStop) break; // Exit the color_family_drop_down loop
                     }
-                    solid_effect_drop_down_index = 0;
-                    if (shouldStop) break; // Exit the color_family_drop_down loop
+                    color_family_drop_down_index = 0;
+                    if (shouldStop) break; // Exit the related_colors_drop_down loop
                 }
-                color_family_drop_down_index = 0;
-                if (shouldStop) break; // Exit the related_colors_drop_down loop
+                if (shouldStop) break; // Exit the year_drop_down loop
+                related_colors_drop_down_index = 0;
             }
-            if (shouldStop) break; // Exit the year_drop_down loop
-            related_colors_drop_down_index = 0;
+            if (shouldStop) break; // Exit the make_drop_down loop
+            model_drop_down_index = 0;//0
         }
         if (shouldStop) break; // Exit the make_drop_down loop
         year_drop_down_index = 1;//0
@@ -748,18 +868,21 @@ async function scrapDataFromPages() {
                 break;
             }
 
-            containers_details = await page.$$eval('#digital_formula > .root', (elements) => {
+            containers_details = await page.$$eval('#digital_formula > .root', (elements, filters,_models_drop_down) => {
                 return elements.map(el => {
                     return {
                         familyId: el.getAttribute('family_id'),
                         sid: el.getAttribute('sid'),
                         make: el.getAttribute('make'),
+                        model: (filters?.model)//&& _models_drop_down[filters.model]
+                            ? _models_drop_down[filters.model]
+                            : "",
                         description: el.getAttribute('desc'),
                         url: el.getAttribute('url'),
                         content: el.innerText.trim()
                     };
                 });
-            });
+            }, filters_obj);
 
             console.log('Found containers:', containers_details.length);
 
@@ -825,20 +948,23 @@ async function scrapDataFromPages() {
 
                     // Get buttons and containers from multitone page
                     const buttons = await multitone_page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
-                    const multitoneContainers = await multitone_page.$$eval('#digital_formula > .root', (elements) => {
+                    const multitoneContainers = await multitone_page.$$eval('#digital_formula > .root', (elements, filters,_models_drop_down) => {
                         return elements.map(el => {
                             const isMultitone = el.querySelector('.formula-multitone-access') !== null;
                             return {
                                 familyId: el.getAttribute('family_id'),
                                 sid: el.getAttribute('sid'),
                                 make: el.getAttribute('make'),
+                                model: (filters?.model)//&& _models_drop_down[filters.model]
+                                    ? _models_drop_down[filters.model]
+                                    : "",
                                 description: el.getAttribute('desc'),
                                 url: el.getAttribute('url'),
                                 content: el.innerText.trim(),
                                 isMultitone: isMultitone
                             };
                         });
-                    });
+                    }, filters_obj);
 
                     // Process each container in multitone page
                     for (let j = 0; j < multitoneContainers.length; j++) {
@@ -888,125 +1014,9 @@ async function scrapDataFromPages() {
                 break;
             }
         }
-
-
     }
 }
 
-async function scrapDataFromPages_d() {
-    let data_arr = [];
-    let hasNextPage = true;
-    await setSearchFilters(page);
-    console.log('after setSearchFilters');
-
-    while (hasNextPage) {
-        let containers_details = null;
-        try {
-            // Wait for the selector with a timeout of 10 seconds
-            await Promise.race([
-                page.waitForSelector('#digital_formula', { timeout: 10000 }),
-                new Promise((resolve, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-            ]);
-            // await page.waitForSelector('#digital_formula');
-            containers_details = await page.$$eval('#digital_formula > .root', (elements) => {
-                return elements.map(el => {
-                    return {
-                        familyId: el.getAttribute('family_id'),
-                        sid: el.getAttribute('sid'),
-                        make: el.getAttribute('make'),
-                        description: el.getAttribute('desc'),
-                        url: el.getAttribute('url'),
-                        content: el.innerText.trim()
-                    };
-                });
-            });
-        } catch (error) {
-            // If the selector is not found within 10 seconds, exit the loop
-            if (error.message === 'Timeout') {
-                console.log('Timeout: #digital_formula not found within 10 seconds');
-                break;
-            } else {
-                // Handle other errors if necessary
-                console.error('Error setSearchFilters :', error);
-                break;
-            }
-        }
-        console.log('before container detail loop');
-
-        for (let i = 0; i < containers_details.length; i++) {
-            console.log('in container detail loop');
-            const container = containers_details[i];
-            const containerHandles = await page.$$('#digital_formula > .root');
-            let hasMultitoneAccess = await containerHandles[i].$('.formula-multitone-access');
-            let buttons = null;
-            let extracted_data = {};
-            let description_arr = [];
-            if (hasMultitoneAccess) {
-                console.log('multi tone found', container);
-
-                description_arr.push(container.description);
-                while (description_arr.length > 0) {
-                    await setSearchFilters(multitone_page, description_arr[description_arr.length - 1]);
-                    description_arr.pop();
-                    let hasNextMultiPage = true;
-                    while (hasNextMultiPage) {
-                        buttons = await multitone_page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
-                        try {
-                            // Wait for the selector with a timeout of 10 seconds
-                            await Promise.race([
-                                multitone_page.waitForSelector('#digital_formula', { timeout: 10000 }),
-                                new Promise((resolve, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-                            ]);
-                            // await page.waitForSelector('#digital_formula');
-                            multitone_page_containers_details = await multitone_page.$$eval('#digital_formula > .root', async (elements) => {
-                                if (await containerHandles[i].$('.formula-multitone-access')) {
-                                    description_arr.push(el.getAttribute('desc'));
-                                }
-                                return elements.map(el => {
-                                    return {
-                                        familyId: el.getAttribute('family_id'),
-                                        sid: el.getAttribute('sid'),
-                                        make: el.getAttribute('make'),
-                                        description: el.getAttribute('desc'),
-                                        url: el.getAttribute('url'),
-                                        content: el.innerText.trim()
-                                    };
-                                });
-                            });
-                        } catch (error) {
-                            // If the selector is not found within 10 seconds, exit the loop
-                            if (error.message === 'Timeout') {
-                                console.log('Timeout: #digital_formula not found within 10 seconds');
-                                break;
-                            } else {
-                                console.error('Error setSearchFilters :', error);
-                                break;
-                            }
-                        }
-
-
-                        for (let index_btn = 0; index_btn < buttons.length; index_btn++) {
-                            extracted_data = await scrapDataFromList(multitone_page, multitone_page_containers_details[index_btn], buttons, index_btn, data_arr);
-                            await saveToExcel([extracted_data], 'paint/sheets/paint.csv');
-                        }
-                        hasNextMultiPage = await goToNextPage(multitone_page);
-                    }
-                }
-            }
-            else {
-                // continue; // removed this before pushing
-                extracted_data = await scrapDataFromList(page, container, buttons, i, data_arr);
-                await saveToExcel([extracted_data], 'paint/sheets/paint.csv');
-
-            }
-            console.log('saving it to csv', [extracted_data]);
-        }
-        hasNextPage = await goToNextPage(page);
-        // hasNextPage = false;
-    }
-
-    console.log('final scraped data data', data_arr);
-}
 
 async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
     let combinedData = {};
@@ -1050,129 +1060,13 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
 
 }
 
-async function getColorInfo(page, i) {
-    const buttons = await page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
-    let iframeData = {};
-    if (buttons[i]) {
-        await buttons[i].scrollIntoViewIfNeeded();
-        await page.waitForSelector('#digital_formula > .root button[data-original-title="Color Information"]', {
-            state: 'visible',
-            timeout: 30000
-        });
-        await buttons[i].click();
-        await page.waitForSelector('#formulaInfo.modal.fade.show', { timeout: 30000 });
-        const iframeSelector = `iframe[src^="/v2/search/formula-info?id="]`;
-        const randomWaitTime = getRandomNumber(3500, 5500);
-        await page.waitForTimeout(randomWaitTime);
-        const iframeHandle = await page.$(iframeSelector);
-        const iframeContent = await iframeHandle.contentFrame();
-
-        // Wait for the specific element to be present and have content
-        await iframeContent.waitForFunction(() => {
-            const manufacturer = document.querySelector('.col-sm-5');
-            return manufacturer && manufacturer.innerText.trim() !== '';
-        }, { timeout: 30000 });
-
-        try {
-            iframeData = await iframeContent.evaluate(() => {
-                const manufacturer = document.querySelector('.col-sm-5')?.innerText || '';
-                const colorCode = document.querySelectorAll('.col-sm-5')[1]?.innerText || '';
-                const colorDescription = document.querySelectorAll('.col-sm-7')[0]?.innerText || '';
-                const year = document.querySelectorAll('.col-sm-6')[0]?.innerText || '';
-                const canvasWrapper = document.querySelector('#canvas_wrapper');
-                const backgroundColor = canvasWrapper ? window.getComputedStyle(canvasWrapper).backgroundColor : '';
-                let carColor = '';
-                const canvas = document.querySelector('#canvas_wrapper canvas');
-
-                if (canvas) {
-                    const imageDataURL = canvas.toDataURL('image/png'); // Get image as base64 data URL
-                    carColor = imageDataURL; // Return the base64 data URL
-                } else {
-                    // console.log('canvas not found');
-                }
-
-                return {
-                    manufacturer,
-                    colorCode,
-                    colorDescription,
-                    year,
-                    backgroundColor,
-                    carColor,
-                };
-            });
-
-            await iframeContent.waitForFunction(() => {
-                const canvas = document.querySelector('#canvas_wrapper canvas');
-                if (!canvas) return false; // Canvas doesn't exist
-                const context = canvas.getContext('2d');
-                const imageData = context.getImageData(0, 0, canvas.width, canvas.height).data;
-                return imageData.some(channel => channel !== 0); // Check if canvas has non-transparent pixels
-            }, { timeout: 30000 });
-
-            const canvas = document.querySelector('#canvas_wrapper canvas');
-            if (canvas) {
-                const imageDataURL = canvas.toDataURL('image/png');
-                carColor = imageDataURL;
-            } else {
-                console.log('Canvas not found');
-            }
-            if (iframeData.carColor) {
-                const base64Data = iframeData.carColor.replace(/^data:image\/png;base64,/, '');
-                const uniqueFileName = `${iframeData.manufacturer}_${iframeData.colorCode}_${Date.now()}.png`;
-                const filePath = path.join('paint', 'colors', uniqueFileName);
-                fs.mkdirSync(path.join('paint', 'colors'), { recursive: true });
-                fs.writeFileSync(filePath, base64Data, 'base64');
-                iframeData.carColor = filePath;
-            }
-            else {
-
-            }
-        } catch (error) {
-            console.error('Error extracting data from iframe:', error);
-        }
-
-        const closebuttons = await page.$$('#formulaInfo .close');
-
-        if (closebuttons.length > 0) {
-            for (let i = 0; i < closebuttons.length; i++) {
-                const isVisible = await closebuttons[i].isVisible();
-                const isEnabled = await closebuttons[i].isEnabled();
-                if (isVisible && isEnabled) {
-                    await closebuttons[i].scrollIntoViewIfNeeded();
-                    await page.evaluate((button) => button.click(), closebuttons[i]);
-                } else {
-                    // console.error(`Close button ${i} is not visible or enabled.`);
-                }
-            }
-        } else {
-            console.error('No close buttons found!');
-        }
-    }
-    return iframeData;
-}
-
-
 async function saveToExcel(dataArray, fileName = 'paint/sheets/paint.csv') {
     const makeDropdown = await get_make_drop_down();
     const filePath = 'paint/sheets/';
     fs.mkdirSync(path.join('paint', 'sheets'), { recursive: true });
-    fileName = path.join(filePath, `${makeDropdown[filters_obj.make_dropdown]}.csv`);
+    fileName = path.join(filePath, `${makeDropdown[filters_obj.make]}.csv`);
     console.log("excel 4");
 
-    // Clean dataArray: Remove newlines, line breaks, and tabs
-    // const cleanedDataArray = dataArray.map(row => {
-    //     const cleanedRow = {};
-    //     for (const key in row) {
-    //         if (row.hasOwnProperty(key)) {
-    //             // Replace newlines, line breaks, and tabs with a space or remove them
-    //             cleanedRow[key] = row[key]
-    //                 .replace(/\n/g, ' ') // Replace newlines with a space
-    //                 .replace(/<br>/g, ' ') // Replace <br> with a space
-    //                 .replace(/\t/g, ' '); // Replace tabs with a space
-    //         }
-    //     }
-    //     return cleanedRow;
-    // });
     const cleanedDataArray = dataArray.map(row => {
         const cleanedRow = {};
         for (const key in row) {
@@ -1191,6 +1085,7 @@ async function saveToExcel(dataArray, fileName = 'paint/sheets/paint.csv') {
     const csvData = cleanedDataArray.map(row => {
         return Object.values(row).join(',');
     }).join('\n');
+    console.log('apend file row data', csvData);
     if (fs.existsSync(fileName)) {
         fs.appendFileSync(fileName, `\n${csvData}`);
     } else {
@@ -1199,33 +1094,6 @@ async function saveToExcel(dataArray, fileName = 'paint/sheets/paint.csv') {
     }
 }
 
-async function saveToExcelCreateSheet(dataArray, fileName = 'paint/sheets/paint.xlsx') {
-    let workbook;
-    let worksheet;
-    const makeDropdown = await get_make_drop_down();
-
-    const sheetName = makeDropdown[filters_obj.make_dropdown]; // Dynamic sheet name
-    let filePath = 'paint/sheets/';
-    await fs.promises.mkdir(filePath, { recursive: true });
-    fileName = filePath + sheetName + '.xlsx';
-    if (fs.existsSync(fileName)) {
-        workbook = xlsx.readFile(fileName);
-        if (workbook.Sheets[sheetName]) {
-            worksheet = workbook.Sheets[sheetName];
-            const existingData = xlsx.utils.sheet_to_json(worksheet);
-            const combinedData = existingData.concat(dataArray);
-            xlsx.utils.sheet_add_json(worksheet, combinedData, { skipHeader: true, origin: -1 });
-        } else {
-            worksheet = xlsx.utils.json_to_sheet(dataArray);
-            xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
-        }
-    } else {
-        workbook = xlsx.utils.book_new();
-        worksheet = xlsx.utils.json_to_sheet(dataArray);
-        xlsx.utils.book_append_sheet(workbook, worksheet, sheetName);
-    }
-    xlsx.writeFile(workbook, fileName);
-}
 app.get('/general_paint', async (req, res) => {
     try {
         res.setHeader('Content-Type', 'text/event-stream');
@@ -1240,6 +1108,7 @@ app.get('/general_paint', async (req, res) => {
         });
 
         isStopped = false;
+        console.log(`step 1 `);
         res.write(`data: [loggingIn]\n\n`);
 
         await loadFromPage(res);
