@@ -44,11 +44,11 @@ async function loadUrl() {
     await page.setExtraHTTPHeaders({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     });
-    await page.goto('https://generalpaint.info/v2/site/login');
+    await page.goto('https://generalpaint.info/v2/site/login', { waitForTimeout: 90000 });
     await loginPage(page);
 
     new_page = await context.newPage();
-    await new_page.goto('https://generalpaint.info/v2/site/login');
+    await new_page.goto('https://generalpaint.info/v2/site/login', { waitForTimeout: 90000 });
     await loginPage(new_page);
     randomWaitTime = getRandomNumber(1500, 3500);
     await new_page.waitForTimeout(randomWaitTime);
@@ -147,14 +147,19 @@ app.get('/loadurl', async (req, res) => {
     }
 });
 
-async function scrapFormaulaDetailsData(sid, id) {
+async function scrapFormaulaDetailsData(container) {
+    let sid = container.sid;
+    let id = container.familyId;
+    console.log('its container scrapFormaulaDetailsData : ', container);
     let load_url = 'https://generalpaint.info/v2/search/family?id=' + id + '&sid=' + sid;
     await new_page.goto(load_url);
     randomWaitTime = getRandomNumber(3500, 5500);
     await new_page.waitForTimeout(randomWaitTime);
     await new_page.waitForSelector('.container.mt-4');
     let color_paths = await downloadSearchFamilyCanvasImage(sid, id, new_page);
-    const data = await new_page.evaluate((color_paths) => {
+    let colorCode = parsePaintInfo(container.content).code;
+    // let colorCode = parsePaintInfo(item.content).code;
+    const data = await new_page.evaluate(({ color_paths, colorCode }) => {
         const results = [];
         const formulaH2 = document.querySelector('.formula-h2');
         const yearColorText = formulaH2 ? formulaH2.innerText.trim() : '';
@@ -191,6 +196,7 @@ async function scrapFormaulaDetailsData(sid, id) {
             results.push({
                 year,
                 color,
+                colorCode,
                 tone,
                 panelNo,
                 details,
@@ -200,7 +206,7 @@ async function scrapFormaulaDetailsData(sid, id) {
         });
 
         return results;
-    }, color_paths); // Pass color_paths as an argument to evaluate
+    }, { color_paths, colorCode }); // Pass color_paths as an argument to evaluate
 
     return data;
 }
@@ -332,24 +338,6 @@ async function setSearchFilters(selected_page, description = null) {
                     await selected_page.selectOption('#plastic_parts', { index: filters.plastic_parts - 1 });
                 }
 
-                /////
-
-//                 await selected_page.evaluate(() => {
-//   const select = document.querySelector('#plastic_parts');
-//   if (select) {
-//     [...select.options].forEach(opt => opt.selected = false);
-//     $(select).selectpicker('refresh'); // important for bootstrap-select UI
-//   }
-// });
-
-// // Now select only one option
-// if (filters.plastic_parts > 2) {
-//   await selected_page.selectOption('#plastic_parts', { index: filters.plastic_parts - 1 });
-//   // Refresh UI again so bootstrap-select reflects the change
-//   await selected_page.evaluate(() => {
-//     $('#plastic_parts').selectpicker('refresh');
-//   });
-// }
             }
             if (filters.groupdesc != null) {
                 await selected_page.selectOption('#groupdesc', { index: filters.groupdesc });
@@ -525,16 +513,19 @@ async function get_model_drop_down(selected_page = null, filters) {
         models = await selected_page.$$eval('#models_dropdown option', options =>
             options.map(o => o.textContent.trim())
         );
-        // await selected_page.selectOption('#models_dropdown', { index: filters.model });
-
-
-        // await selected_page.click('button[data-id="models_dropdown"]');
-    await selected_page.waitForTimeout(randomWaitTime);
+        await selected_page.waitForTimeout(randomWaitTime);
         console.log('models selection : ', filters.model);
         console.log('all models selection : ', models);
-        await selected_page.selectOption('#models_dropdown', { index: filters.model });
-        // await selected_page.click(`.dropdown-menu .dropdown-item >> text="${filters.model}"`);
-    
+
+        let model_drop_down_text = filters.model_text ?? models[filters.model];
+        console.log('model_drop_down_text : ', model_drop_down_text);
+        if (model_drop_down_text) {
+            await selected_page.selectOption('#models_dropdown', {
+                label: filters.model_text
+            });
+        }
+
+        // await selected_page.selectOption('#models_dropdown', { index: filters.model });
     }
     console.log(models);
     _models_drop_down = models;
@@ -547,8 +538,9 @@ async function get_year_drop_down() {
     ];
 }
 async function get_related_colors_drop_down() {
+    return ["Related Colors"];
     return [//13 "Related Colors", 
-        "Bumper", "Chassis", "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
+        "Related Colors", "Bumper", "Chassis", "Door Window", "Interior", "Multitone", "Roof", "Stripe", "Underhood", "Wheel", "Door Handle", "Grill Radiator", "Mirror", "Trim"
     ];
 }
 async function get_color_family_drop_down() {
@@ -600,7 +592,7 @@ async function loadFromPage(res) {
 
     let make_drop_down = await get_make_drop_down();
     let year_drop_down = await get_year_drop_down();
-    
+
     let model_drop_down = [];
     let related_colors_drop_down = await get_related_colors_drop_down();
     let color_family_drop_down = await get_color_family_drop_down();
@@ -609,6 +601,7 @@ async function loadFromPage(res) {
     let make_drop_down_index = 1;//0
     let year_drop_down_index = 1;//0
     let model_drop_down_index = 0;
+    // let model_drop_down_text = "";
     let related_colors_drop_down_index = 0;
     let color_family_drop_down_index = 0;
     let solid_effect_drop_down_index = 0;
@@ -617,10 +610,11 @@ async function loadFromPage(res) {
         make_drop_down_index = parseInt(lastRow[0]);
         year_drop_down_index = parseInt(lastRow[2]);
         model_drop_down_index = parseInt(lastRow[4]);
+        // model_drop_down_text = lastRow[5];
         related_colors_drop_down_index = parseInt(lastRow[6]);
         color_family_drop_down_index = parseInt(lastRow[8]);
         solid_effect_drop_down_index = parseInt(lastRow[10]);
-        
+
         // starting_from_csv_skip_loop = true;
     }
     else {
@@ -629,6 +623,7 @@ async function loadFromPage(res) {
             make_drop_down_index = parseInt(all_completed[0]);
             year_drop_down_index = parseInt(all_completed[2]);
             model_drop_down_index = parseInt(all_completed[4]);
+            // model_drop_down_text = all_completed[5];
             related_colors_drop_down_index = parseInt(all_completed[6]);
             color_family_drop_down_index = parseInt(all_completed[8]);
             solid_effect_drop_down_index = parseInt(all_completed[10]);
@@ -640,42 +635,44 @@ async function loadFromPage(res) {
         year: year_drop_down_index,
         make: make_drop_down_index,
         model: model_drop_down_index,
+        model_text: "",
         plastic_parts: related_colors_drop_down_index,
         groupdesc: color_family_drop_down_index,
         effect: solid_effect_drop_down_index,
     };
     await setSearchFilters(page, null);
 
-    if(lastRow||all_completed){
+    if (lastRow || all_completed) {
         let filter_completed = false;
-        if (solid_effect_drop_down_index >= solid_effect_drop_down.length -1) {
+        if (solid_effect_drop_down_index >= solid_effect_drop_down.length - 1) {
             solid_effect_drop_down_index = 0;
             color_family_drop_down_index++;
             filter_completed = true;
         }
-        else{
+        else {
             solid_effect_drop_down_index++;
         }
-        
+
         // If we're at the end of color_family_drop_down, reset and increment related_colors_drop_down
-        if (color_family_drop_down_index >= color_family_drop_down.length -1 && filter_completed) {
+        if (color_family_drop_down_index >= color_family_drop_down.length - 1 && filter_completed) {
             color_family_drop_down_index = 0;
             related_colors_drop_down_index++;
         }
-        
+
         // If we're at the end of related_colors_drop_down, reset and increment model_drop_down
-        if (related_colors_drop_down_index >= related_colors_drop_down.length -1 && filter_completed) {
+        if (related_colors_drop_down_index >= related_colors_drop_down.length - 1 && filter_completed) {
             related_colors_drop_down_index = 0;
             model_drop_down_index++;
         }
-        console.log("model_drop_down:",_models_drop_down);
-        if (model_drop_down_index >= _models_drop_down.length -1 && filter_completed) {
+        console.log("model_drop_down:", _models_drop_down);
+        if (model_drop_down_index >= _models_drop_down.length - 1 && filter_completed) {
             model_drop_down_index = 0;
+            // model_drop_down_text = "";
             year_drop_down_index++;
         }
-        
+
         // If we're at the end of year_drop_down, reset and increment make_drop_down
-        if (year_drop_down_index >= year_drop_down.length -1 && filter_completed) {
+        if (year_drop_down_index >= year_drop_down.length - 1 && filter_completed) {
             year_drop_down_index = 0;
             make_drop_down_index++;
         }
@@ -688,15 +685,16 @@ async function loadFromPage(res) {
         initialDelay: 1000,       // Starting with 1 second delay
         maxDelay: 10 * 60 * 1000  // Up to 10 minutes total wait time
     };
-                            console.log("before combination in loop :");
-                             console.log("Processing combination in loop :");
-                             console.log("make:", make_drop_down_index, "/", make_drop_down.length);
-                             console.log("year:", year_drop_down_index, "/", year_drop_down.length);
-                             console.log("model:", model_drop_down_index, "/", _models_drop_down.length);
-                             console.log("related_colors:", related_colors_drop_down_index, "/", related_colors_drop_down.length);
-                             console.log("color_family:", color_family_drop_down_index, "/", color_family_drop_down.length);
-                             console.log("solid_effect:", solid_effect_drop_down_index, "/", solid_effect_drop_down.length);
-                    
+    console.log("before combination in loop :");
+    console.log("Processing combination in loop :");
+    console.log("make:", make_drop_down_index, "/", make_drop_down.length);
+    console.log("year:", year_drop_down_index, "/", year_drop_down.length);
+    console.log("model:", model_drop_down_index, "/", _models_drop_down.length);
+    // console.log("model model_drop_down_text :", model_drop_down_text, "/", _models_drop_down.length);
+    console.log("related_colors:", related_colors_drop_down_index, "/", related_colors_drop_down.length);
+    console.log("color_family:", color_family_drop_down_index, "/", color_family_drop_down.length);
+    console.log("solid_effect:", solid_effect_drop_down_index, "/", solid_effect_drop_down.length);
+
     for (; make_drop_down_index < make_drop_down.length; make_drop_down_index++) {
         for (; year_drop_down_index < year_drop_down.length; year_drop_down_index++) {
             for (; model_drop_down_index < _models_drop_down.length; model_drop_down_index++) {
@@ -707,19 +705,21 @@ async function loadFromPage(res) {
                             //     starting_from_csv_skip_loop = false;
                             //     continue;
                             // }
-                             console.log("Processing combination in loop :");
-                             console.log("make:", make_drop_down_index, "/", make_drop_down.length);
-                             console.log("year:", year_drop_down_index, "/", year_drop_down.length);
-                             console.log("model:", model_drop_down_index, "/", model_drop_down.length);
-                             console.log("related_colors:", related_colors_drop_down_index, "/", related_colors_drop_down.length);
-                             console.log("color_family:", color_family_drop_down_index, "/", color_family_drop_down.length);
-                             console.log("solid_effect:", solid_effect_drop_down_index, "/", solid_effect_drop_down.length);
-                    
+                            console.log("Processing combination in loop :");
+                            console.log("make:", make_drop_down_index, "/", make_drop_down.length);
+                            console.log("year:", year_drop_down_index, "/", year_drop_down.length);
+                            console.log("model:", model_drop_down_index, "/", model_drop_down.length);
+                            // console.log("model model_drop_down_text :", model_drop_down_text, "/", model_drop_down.length);
+                            console.log("related_colors:", related_colors_drop_down_index, "/", related_colors_drop_down.length);
+                            console.log("color_family:", color_family_drop_down_index, "/", color_family_drop_down.length);
+                            console.log("solid_effect:", solid_effect_drop_down_index, "/", solid_effect_drop_down.length);
+
                             filters_obj = {
                                 description: null,
                                 year: year_drop_down_index,
                                 make: make_drop_down_index,
                                 model: model_drop_down_index,
+                                // model_text: model_drop_down_text,
                                 plastic_parts: related_colors_drop_down_index,
                                 groupdesc: color_family_drop_down_index,
                                 effect: solid_effect_drop_down_index,
@@ -765,6 +765,10 @@ async function loadFromPage(res) {
             }
             if (shouldStop) break; // Exit the make_drop_down loop
             model_drop_down_index = 0;//0
+            // model_drop_down_text = "";//0
+            filters_obj = {
+                model_text: "",
+            };
         }
         if (shouldStop) break; // Exit the make_drop_down loop
         year_drop_down_index = 1;//0
@@ -868,21 +872,25 @@ async function scrapDataFromPages() {
                 break;
             }
 
-            containers_details = await page.$$eval('#digital_formula > .root', (elements, filters,_models_drop_down) => {
-                return elements.map(el => {
-                    return {
-                        familyId: el.getAttribute('family_id'),
-                        sid: el.getAttribute('sid'),
-                        make: el.getAttribute('make'),
-                        model: (filters?.model)//&& _models_drop_down[filters.model]
-                            ? _models_drop_down[filters.model]
-                            : "",
-                        description: el.getAttribute('desc'),
-                        url: el.getAttribute('url'),
-                        content: el.innerText.trim()
-                    };
-                });
-            }, filters_obj);
+            containers_details = await page.$$eval(
+                '#digital_formula > .root',
+                (elements, data) => {
+                    const { filters, models } = data; // destructure the wrapped object
+
+                    return elements.map(el => {
+                        return {
+                            familyId: el.getAttribute('family_id'),
+                            sid: el.getAttribute('sid'),
+                            make: el.getAttribute('make'),
+                            model: models?.[filters?.model] ?? "",
+                            description: el.getAttribute('desc'),
+                            url: el.getAttribute('url'),
+                            content: el.innerText.trim(),
+                        };
+                    });
+                },
+                { filters: filters_obj, models: _models_drop_down } // wrap both into one object
+            );
 
             console.log('Found containers:', containers_details.length);
 
@@ -914,7 +922,7 @@ async function scrapDataFromPages() {
                     }
 
                 } else {
-                    // continue;
+                    console.log('Direct data found in container:', JSON.stringify(container));
                     const buttons = await page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
                     extracted_data = await scrapDataFromList(
                         page,
@@ -923,6 +931,7 @@ async function scrapDataFromPages() {
                         i,
                         data_arr
                     );
+                    console.log('extracted_data here :', extracted_data);
                     await saveToExcel([extracted_data], 'paint/sheets/paint.csv');
                 }
                 console.log('Saved container data:', container.description);
@@ -948,23 +957,28 @@ async function scrapDataFromPages() {
 
                     // Get buttons and containers from multitone page
                     const buttons = await multitone_page.$$('#digital_formula > .root button[data-original-title="Color Information"]');
-                    const multitoneContainers = await multitone_page.$$eval('#digital_formula > .root', (elements, filters,_models_drop_down) => {
-                        return elements.map(el => {
-                            const isMultitone = el.querySelector('.formula-multitone-access') !== null;
-                            return {
-                                familyId: el.getAttribute('family_id'),
-                                sid: el.getAttribute('sid'),
-                                make: el.getAttribute('make'),
-                                model: (filters?.model)//&& _models_drop_down[filters.model]
-                                    ? _models_drop_down[filters.model]
-                                    : "",
-                                description: el.getAttribute('desc'),
-                                url: el.getAttribute('url'),
-                                content: el.innerText.trim(),
-                                isMultitone: isMultitone
-                            };
-                        });
-                    }, filters_obj);
+                    const multitoneContainers = await multitone_page.$$eval(
+                        '#digital_formula > .root',
+                        (elements, data) => {
+                            const { filters, models } = data;
+
+                            return elements.map(el => {
+                                const isMultitone = el.querySelector('.formula-multitone-access') !== null;
+
+                                return {
+                                    familyId: el.getAttribute('family_id'),
+                                    sid: el.getAttribute('sid'),
+                                    make: el.getAttribute('make'),
+                                    model: models?.[filters?.model] ?? "",
+                                    description: el.getAttribute('desc'),
+                                    url: el.getAttribute('url'),
+                                    content: el.innerText.trim(),
+                                    isMultitone: isMultitone
+                                };
+                            });
+                        },
+                        { filters: filters_obj, models: _models_drop_down } // ✅ wrap into single object
+                    );
 
                     // Process each container in multitone page
                     for (let j = 0; j < multitoneContainers.length; j++) {
@@ -1016,7 +1030,31 @@ async function scrapDataFromPages() {
         }
     }
 }
+function parsePaintInfo(content) {
+    if (!content) return null;
 
+    // split by newlines, trim empty lines
+    const lines = content.split("\n").map(l => l.trim()).filter(Boolean);
+
+    // first line always has brand + maybe code
+    const firstLine = lines[0];
+
+    // regex to grab last number block in the first line
+    const codeMatch = firstLine.match(/\d+$/);
+    let colorCode = codeMatch ? codeMatch[0] : "";
+
+    // if no numeric code found, fallback: take color name from second line
+    if (!colorCode && lines[1]) {
+        colorCode = lines[1];
+    }
+
+    return {
+        code: colorCode,
+        colorName: lines[1] || null,
+        years: lines[2] || null,
+        brand: firstLine.replace(/\d+$/, "").trim()
+    };
+}
 
 async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
     let combinedData = {};
@@ -1033,7 +1071,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
             if (urlAndIdMatch && urlAndIdMatch[1] && urlAndIdMatch[2]) {
                 const url = urlAndIdMatch[1];
                 const id = urlAndIdMatch[2];
-                let scrap_details = await scrapFormaulaDetailsData(container.sid, container.familyId);
+                let scrap_details = await scrapFormaulaDetailsData(container);
                 for (const scrap_detail of scrap_details) {
                     combinedData = { ...container, ...scrap_detail };
                     data_arr.push(combinedData);
@@ -1059,7 +1097,27 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
     }
 
 }
+const escapeCsvValue = (value) => {
+    if (value == null) return "";
+    let str = String(value)
+        .replace(/\n/g, ' ')
+        .replace(/<br>/g, ' ')
+        .replace(/\t/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
+    // Escape quotes by doubling them
+    if (str.includes('"')) {
+        str = str.replace(/"/g, '""');
+    }
+
+    // Wrap in quotes if contains comma, quote, or newline
+    if (/[",\n]/.test(str)) {
+        str = `"${str}"`;
+    }
+
+    return str;
+}
 async function saveToExcel(dataArray, fileName = 'paint/sheets/paint.csv') {
     const makeDropdown = await get_make_drop_down();
     const filePath = 'paint/sheets/';
@@ -1071,25 +1129,22 @@ async function saveToExcel(dataArray, fileName = 'paint/sheets/paint.csv') {
         const cleanedRow = {};
         for (const key in row) {
             if (row.hasOwnProperty(key)) {
-                const value = row[key];
-                cleanedRow[key] = (value != null ? String(value) : '') // handles null and undefined
-                    .replace(/\n/g, ' ')
-                    .replace(/<br>/g, ' ')
-                    .replace(/\t/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
+                cleanedRow[key] = escapeCsvValue(row[key]);
             }
         }
         return cleanedRow;
     });
+
     const csvData = cleanedDataArray.map(row => {
-        return Object.values(row).join(',');
-    }).join('\n');
-    console.log('apend file row data', csvData);
+        return Object.values(row).join(",");
+    }).join("\n");
+
+    console.log("append file row data", csvData);
+
     if (fs.existsSync(fileName)) {
         fs.appendFileSync(fileName, `\n${csvData}`);
     } else {
-        const header = Object.keys(cleanedDataArray[0]).join(',');
+        const header = Object.keys(cleanedDataArray[0]).join(",");
         fs.writeFileSync(fileName, `${header}\n${csvData}`);
     }
 }
