@@ -365,67 +365,7 @@ async function setSearchFilters(selected_page, description = null) {
     }
     return;
 }
-async function setSearchFilters_d(selected_page, description = null) {
-    await loginPage(selected_page);
-    for (let try_to_load = 0; try_to_load < 5; try_to_load++) {
-        try {
-            filters_obj.description = description;
-            let filters = filters_obj;
 
-            console.log('setSearchFilters filters', filters_obj);
-            let randomWaitTime = getRandomNumber(1000, 1500);
-
-            // await selected_page.waitForSelector('#make_dropdown');
-            await selected_page.waitForSelector('#make_dropdown', { timeout: 5000 });
-            if (filters.make !== null) {
-                await selected_page.selectOption('#make_dropdown', { index: filters.make });
-                await get_model_drop_down(selected_page, filters);
-            }
-            if (filters.year !== null) {
-                await selected_page.selectOption('#year', { index: filters.year });
-            }
-            if (filters.plastic_parts !== null) {
-                await selected_page.evaluate(() => {
-                    const selectElement = document.querySelector('#plastic_parts');
-                    for (let option of selectElement.options) {
-                        option.selected = false;
-                    }
-                });
-                // if (filters.plastic_parts !== 0) {
-                if (filters.plastic_parts > 2) {
-                    await selected_page.selectOption('#plastic_parts', { index: (filters.plastic_parts - 1) });
-                }
-            }
-            if (filters.groupdesc !== null) {
-                await selected_page.selectOption('#groupdesc', { index: filters.groupdesc });
-            }
-            if (filters.effect !== null) {
-                await selected_page.selectOption('#effect', { index: filters.effect });
-            }
-            if (filters.description !== null) {
-                await selected_page.fill('#description', filters.description);
-            }
-            await selected_page.waitForTimeout(500);
-
-            let submitButtonSelector = '.btn.btn-success.btn-lg.mr-3';
-            await Promise.all([
-                selected_page.click(submitButtonSelector),
-            ]);
-
-            await selected_page.waitForTimeout(randomWaitTime);
-            return;
-        } catch (error) {
-            console.error('Error in setSearchfilter 1 :', error);
-            await selected_page.goto('https://generalpaint.info/v2/search');
-            await loginPage(selected_page);
-            console.error('Error in setSearchfilter 2 :');
-            await selected_page.waitForTimeout(5000);
-            console.error('Error in setSearchfilter 3 :');
-
-
-        }
-    }
-}
 
 const getCurrentPageNumber = async (nextpage) => {
     try {
@@ -1041,9 +981,9 @@ function parsePaintInfo(content) {
 
     // regex to grab last number block in the first line
     const codeMatch = firstLine.match(/\d+$/);
-    let colorCode = codeMatch ? codeMatch[0] : "";
+    // let colorCode = codeMatch ? codeMatch[0] : "";
+    let colorCode = "" + ((firstLine ?? "").split(" ")[1] ?? ""); // add ' if required
 
-    // if no numeric code found, fallback: take color name from second line
     if (!colorCode && lines[1]) {
         colorCode = lines[1];
     }
