@@ -4,7 +4,7 @@ let uniqueRecords = new Set();
 let table_data = [];
 
 
-
+alert('its aapp it dont work');
 window.addEventListener("beforeunload", () => {
     if (eventSource) {
         eventSource.close();

@@ -7,6 +7,12 @@ let uniqueRecords = 0;
 let duplicateRecords = 0;
 let db_store;
 
+$(function(){
+    setTimeout(() => {
+        $('#loadButton').click();
+    }, 10000);
+})
+
 function clear_previous_record() {
     db_store.clear().onsuccess = () => {
         console.log("Previous IndexedDB data cleared.");
@@ -102,14 +108,11 @@ document.getElementById("startButton").addEventListener("click", () => {
     // Replace with your actual API endpoint
     eventSource = new EventSource(`http://localhost:5005/general_paint?start_page=${start_page}`);
 
+    console.log('event', eventSource);
     eventSource.onmessage = (event) => {
-        if (event.data === "[Loading]") {
-            showLoadingModal("Loading...");
-            return;
-        }
-
-        if (event.data === "[loadingURL]") {
-            showLoadingModal("Loading URL...");
+        console.log('event.data onmessage function', event.data);
+        if (event.data === "[loggingIn]") {
+            showLoadingModal("Scrapper Started");
             return;
         }
 
@@ -203,7 +206,24 @@ document.getElementById('loadButton').addEventListener('click', async () => {
     $("#startButton").css('display', 'block');
     $("#stopButton").css('display', 'none');
     $("#downloadCsvButton").css('display', 'none');
-    await fetch('http://localhost:5005/loadurl', { method: 'GET' });
+    // await fetch('http://localhost:5005/loadurl', { method: 'GET' });
+
+    
+    const es = new EventSource("http://localhost:5005/loadurl");
+
+    es.onmessage = (event) => {
+        console.log("SSE:", event.data);
+
+        if (event.data === "[loadurlSuccess]") {
+            es.close();                       // close SSE connection
+            $("#startButton").show().trigger("click"); // show + auto-click
+        }
+
+        if (event.data.startsWith("[ERROR")) {
+            es.close();
+            alert("Error loading URL: " + event.data);
+        }
+    };
     console.log("Open browser.");
 });
 
