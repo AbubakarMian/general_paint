@@ -1,153 +1,313 @@
 let eventSource;
 let isStopped = false;
-let uniqueRecords = new Set();
+let db;
 let table_data = [];
+let totalRecords = 0;
+let uniqueRecords = 0;
+let duplicateRecords = 0;
+let db_store;
+
+$(function(){
+    setTimeout(() => {
+        $('#loadButton').click();
+    }, 10000);
+})
+
+function clear_previous_record() {
+    db_store.clear().onsuccess = () => {
+        console.log("Previous IndexedDB data cleared.");
+        resolve();
+    };
+}
+
+function initializeIndexedDB() {
+    return new Promise((resolve, reject) => {
+        const dbRequest = indexedDB.open("UniqueRecordsDB", 1);
+
+        dbRequest.onupgradeneeded = (event) => {
+            db = event.target.result;
+            if (!db.objectStoreNames.contains("records")) {
+                db.createObjectStore("records", { keyPath: "uniqueKey" });
+            }
+        };
+
+        dbRequest.onsuccess = (event) => {
+            db = event.target.result;
+            const transaction = db.transaction("records", "readwrite");
+            db_store = transaction.objectStore("records");
+
+            // store.clear().onsuccess = () => {
+            //     console.log("Previous IndexedDB data cleared.");
+            //     resolve();
+            // };
+
+            transaction.onerror = (error) => {
+                console.error("Error clearing IndexedDB:", error);
+                reject(error);
+            };
+        };
+
+        dbRequest.onerror = (event) => {
+            console.error("Error initializing IndexedDB:", event.target.error);
+            reject(event.target.error);
+        };
+    });
+}
+
+function addRecordToIndexedDB(records_arr, onSuccess, onDuplicate) {
+    if (!db) {
+        console.error("IndexedDB is not initialized!");
+        return;
+    }
+    const transaction = db.transaction("records", "readwrite");
+    const store = transaction.objectStore("records");
+
+    records_arr.forEach(record => {
+        const getRequest = store.get(record.uniqueKey);
+        totalRecords++;
+        getRequest.onsuccess = () => {
+            if (!getRequest.result) {
+                const addRequest = store.add(record);
+                addRequest.onsuccess = onSuccess;
+                uniqueRecords++;
+            } else {
+                // onDuplicate();
+                duplicateRecords++;
+            }
+            // updateRecordNumbers(totalRecords, uniqueRecords, duplicateRecords);
+        };
+        updateRecordNumbers(totalRecords, uniqueRecords, duplicateRecords);
 
 
-alert('its aapp it dont work');
+        getRequest.onerror = () => {
+            console.error("Error accessing IndexedDB.");
+        };
+    });
+
+}
+function updateRecordNumbers(totalRecords, uniqueRecords, duplicateRecords) {
+    $('#total').text(totalRecords);
+    $('#unique').text(uniqueRecords);
+    $('#duplicate').text(duplicateRecords);
+}
+document.getElementById("startButton").addEventListener("click", () => {
+    // $("#startButton").css("display", "none");
+    $("#stopButton").css("display", "block");
+    $("#downloadCsvButton").css("display", "none");
+
+    const tableBody = document.querySelector("#dataTable tbody");
+    initializeIndexedDB();
+    // Prevent starting if already running
+    if (eventSource && !isStopped) return;
+
+    console.log("Starting data fetch...");
+    isStopped = false;
+    tableBody.innerHTML = "";
+    let start_page = $('#start_page').val();
+
+    // Replace with your actual API endpoint
+    eventSource = new EventSource(`http://localhost:5005/general_paint?start_page=${start_page}`);
+
+    console.log('event', eventSource);
+    eventSource.onmessage = (event) => {
+        console.log('event.data onmessage function', event.data);
+        if (event.data === "[loggingIn]") {
+            showLoadingModal("Scrapper Started");
+            return;
+        }
+
+        if (event.data === "[DONE]") {
+            eventSource.close();
+            $("#stopButton").click();
+            return;
+        }
+
+        if (event.data === "[ERROR]") {
+            showServerError();
+            eventSource.close();
+            $("#stopButton").click();
+            return;
+        }
+
+        hideLoadingModal();
+        const response = JSON.parse(event.data);
+        const page_num = response.page_num ?? '';
+        const rowsData = response.data;
+        if (!isNaN(page_num)) {
+            $('#pages_scraped').text(page_num);
+        }
+        addRecordToIndexedDB(
+            rowsData,
+            () => {
+                addRowsToTable(rowsData, tableBody);
+                showToast(`${rowsData.length} Rows added successfully`);
+            },
+            () => {
+                showErrorToast(`Duplicate data found`);
+            }
+        );
+    };
+
+    eventSource.onerror = (error) => {
+        showErrorToast(`Browser isn't responding please close captch its closed and try agin from page number ${rowsData.page_num}.`);
+        console.error("Error receiving data:", error);
+        showServerError();
+        eventSource.close();
+    };
+});
+
+function showLoadingModal(message) {
+    $("#loadingMessage").text(message);
+    const loadingModal = new bootstrap.Modal(document.getElementById("loadingModal"));
+    loadingModal.show();
+}
+
+function hideLoadingModal() {
+    $("#closeLoadingbtn").click();
+}
+
+function showServerError() {
+    $(".server_error").css("display", "block");
+}
+
+function addRowsToTable(rowsData, tableBody) {
+    tableBody.innerHTML = "";
+    rowsData.forEach(rowData => {
+        const newRow = document.createElement("tr");
+        newRow.innerHTML = `
+        <td>${rowData.name}</td>
+        <td>${rowData.email}</td>
+        <td>${rowData.phone}</td>
+        <td>${rowData.address}</td>`;
+        tableBody.appendChild(newRow);
+    });
+}
+
+function showToast(message) {
+    document.getElementById("toastContent").innerText = message;
+    const infoToast = new bootstrap.Toast(document.getElementById("infoToast"));
+    infoToast.show();
+}
+
+function showErrorToast(message) {
+    document.getElementById("errorToastContent").innerText = message;
+    const errorToast = new bootstrap.Toast(document.getElementById("errorToast"));
+    errorToast.show();
+}
+
 window.addEventListener("beforeunload", () => {
     if (eventSource) {
         eventSource.close();
     }
 });
 
-document.getElementById('startButton').addEventListener('click', () => {
-    const url = document.getElementById("urlInput").value;
-
-    if (url == '') {
-        return;
-    }
-
-    $("#startButton").css('display', 'none');
-    $("#stopButton").css('display', 'block');
-    $("#downloadCsvButton").css('display', 'none');
-
-    const tableBody = document.querySelector("#dataTable tbody");
-
-    if (eventSource && !isStopped) return; // Prevent starting if already running
-    console.log('starting 1');
-    isStopped = false;
-    // tableBody.innerHTML = ''; 
-    // eventSource = new EventSource(`https://node.hatinco.com/demand_base?url=${encodeURIComponent(url)}`);
-    eventSource = new EventSource(`http://localhost:5003/demand_base?url=${encodeURIComponent(url)}`);
-    eventSource.onmessage = (event) => {
-
-        if (event.data === "[loggingIn]") {
-            const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
-            // $('#loadingStatus').html('Loading loggin In ...');
-            $('#loadingMessage').text('Signing In...');
-            loadingModal.toggle();
-            return;
-        }
-        if (event.data === "[loadingURL]") {
-            $('#loadingMessage').text('Loading URL...');
-
-            // $('#loadingStatus').html('Loading URL ...');
-            return;
-        }
-        if (event.data === "[DONE]") {
-            eventSource.close();
-            $('#stopButton').click();
-            return;
-        }
-        // $('#loadingStatus').html('');
-
-        $('#closeLoadingbtn').click();
-
-        const rowData = JSON.parse(event.data);
-        const toastContent = `Added: Name: ${rowData.name},  Email: ${rowData.email},phone: ${rowData.phone},address: ${rowData.address}`;
-        let uniqueKey = rowData.uniqueKey;
-        console.log('starting 2', uniqueKey);
-
-        if (!uniqueRecords.has(uniqueKey)) {
-            uniqueRecords.add(uniqueKey);
-            table_data = {
-                name: rowData.name, email: rowData.email,
-                phone: rowData.phone, address: rowData.address
-            };
-            const newRow = document.createElement("tr");
-            newRow.innerHTML = `
-                    <td>${rowData.name}</td>
-                    <td>${rowData.email}</td>
-                    <td>${rowData.phone}</td>
-                    <td>${rowData.address}</td>`;
-            tableBody.appendChild(newRow);
-            document.getElementById('toastContent').innerText = toastContent;
-
-            const infoToast = new bootstrap.Toast(document.getElementById('infoToast'));
-            infoToast.show();
-        }
-        else {
-            console.log('else starting 3');
-
-            const errorContent = `Duplicate entry : ${toastContent}`;
-            document.getElementById('errorToastContent').innerText = errorContent;
-            const errorToast = new bootstrap.Toast(document.getElementById('errorToast'));
-            errorToast.show();
-        }
-    };
-
-    eventSource.onerror = (error) => {
-        console.error("Error receiving data:", error);
-        eventSource.close();
-    };
-});
-
-
-document.getElementById('stopButton').addEventListener('click', async () => {
+document.getElementById('loadButton').addEventListener('click', async () => {
+    $("#loadButton").css('display', 'none');
     $("#startButton").css('display', 'block');
     $("#stopButton").css('display', 'none');
-    $("#downloadCsvButton").css('display', 'block');
+    $("#downloadCsvButton").css('display', 'none');
+    // await fetch('http://localhost:5005/loadurl', { method: 'GET' });
+
+    
+    const es = new EventSource("http://localhost:5005/loadurl");
+
+    es.onmessage = (event) => {
+        console.log("SSE:", event.data);
+
+        if (event.data === "[loadurlSuccess]") {
+            es.close();                       // close SSE connection
+            $("#startButton").show().trigger("click"); // show + auto-click
+        }
+
+        if (event.data.startsWith("[ERROR")) {
+            es.close();
+            alert("Error loading URL: " + event.data);
+        }
+    };
+    console.log("Open browser.");
+});
+
+document.getElementById('stopButton').addEventListener('click', async () => {
+    $("#startButton").css('display', 'none');
+    $("#stopButton").css('display', 'none');
+    // $("#downloadCsvButton").css('display', 'block');
 
     if (eventSource) {
         isStopped = true;
         eventSource.close();
         eventSource = null;
-        await fetch('http://localhost:5003/stop_scraping', { method: 'GET' });
+        await fetch('http://localhost:5005/stop_scraping', { method: 'GET' });
         console.log("Scraping stopped by the user.");
     }
 });
 
-document.getElementById('downloadCsvButton').addEventListener('click', (event) => {
-    $("#stopButton").click();
-    event.preventDefault();
-    const table = document.querySelector("#dataTable");
-    const rows = table.querySelectorAll('tr');
-    const csvData = [];
+function getAllRecords() {
+    // const transaction = db.transaction("records", "readwrite");
+    // const store = transaction.objectStore("records");
+    return new Promise((resolve, reject) => {
+    //   const transaction = db.transaction(storeName, "readonly");
+    //   const store = transaction.objectStore(storeName);
+      const request = db_store.getAll();
 
-    // Loop through all rows and cells to extract data
-    rows.forEach((row, index) => {
-        const rowData = [];
-        const cells = row.querySelectorAll('td, th');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
 
-        cells.forEach(cell => {
-            let cellText = cell.innerText.trim();
+  function convertToCSV(data) {
+    if (!data.length) return "";
 
-            // Escape double quotes by doubling them
-            if (cellText.includes('"')) {
-                cellText = cellText.replace(/"/g, '""');
-            }
+    // Extract headers (keys of the first object)
+    const headers = Object.keys(data[0]);
+    const csvRows = [headers.join(",")]; // Add headers as the first row
 
-            // Enclose the cell value in double quotes if it contains a comma, a quote, or a newline
-            if (cellText.includes(',') || cellText.includes('"') || cellText.includes('\n')) {
-                cellText = `"${cellText}"`;
-            }
-
-            rowData.push(cellText);
-        });
-
-        if (rowData.length > 0) {
-            csvData.push(rowData.join(','));
-        }
+    // Add data rows
+    data.forEach((record) => {
+      const row = headers.map((header) => {
+        const value = record[header];
+        // Escape quotes in values
+        return `"${String(value || "").replace(/"/g, '""')}"`;
+      });
+      csvRows.push(row.join(","));
     });
 
-    // Create a CSV string
-    const csvString = csvData.join('\n');
+    return csvRows.join("\n");
+  }
 
-    // Create a Blob with the CSV data and trigger a download
-    const blob = new Blob([csvString], { type: 'text/csv' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'data.csv';
-    link.click();
-});
+  // Trigger download of CSV data
+  function downloadCSV(csvData) {
+    const blob = new Blob([csvData], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = $("<a>")
+      .attr("href", url)
+      .attr("download", "data.csv")
+      .appendTo("body");
+    link[0].click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Handle button click to download CSV
+  $("#download").on("click", async () => {
+
+  });
+
+  async function downloadData(event){
+    try {
+    event.preventDefault();
+
+        // const db = await openDatabase();
+        const records = await getAllRecords();
+  
+        // Convert records to CSV and download
+        const csvData = convertToCSV(records);
+        if (csvData) {
+          downloadCSV(csvData);
+        } else {
+          alert("No data to download!");
+        }
+      } catch (error) {
+        console.error("Error downloading CSV:", error);
+      }
+  }
+
