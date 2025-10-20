@@ -375,6 +375,10 @@ async function setSearchFilters(selected_page, description = null) {
         await selected_page.selectOption("#make_dropdown", {
           index: filters.make,
         });
+        await selected_page.evaluate(() => {// ensure trigger the change event
+          const el = document.querySelector("#make_dropdown");
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        });
         await get_model_drop_down(selected_page, filters);
       }
       if (filters.year != null) {
@@ -382,20 +386,64 @@ async function setSearchFilters(selected_page, description = null) {
       }
       if (filters.plastic_parts != null) {
         // clear selections
-        await selected_page.selectOption("#plastic_parts", []);
-        if (filters.plastic_parts > 2) {
-          await selected_page.selectOption("#plastic_parts", {
-            index: filters.plastic_parts - 1,
-          });
+        // await selected_page.selectOption("#plastic_parts", []);
+        // if (filters.plastic_parts > 2) {
+        //   await selected_page.selectOption("#plastic_parts", {
+        //     index: filters.plastic_parts - 1,
+        //   });
+        // }
+        if (filters.plastic_parts != null) {
+          const check = await checkDependentChange(
+            selected_page,
+            "#plastic_parts",
+            ["#models_dropdown"], // dependent dropdowns to monitor
+            async () => {
+              await selected_page.selectOption("#plastic_parts", []);
+              if (filters.plastic_parts > 2) {
+                await selected_page.selectOption("#plastic_parts", {
+                  index: filters.plastic_parts - 1,
+                });
+              }
+            }
+          );
+        
+          if (check.result === false) {
+            console.log("Change detected:", check);
+            return false; // stop or handle it as you like
+          }
         }
       }
       if (filters.groupdesc != null) {
-        await selected_page.selectOption("#groupdesc", {
-          index: filters.groupdesc,
-        });
+        const check = await checkDependentChange(
+          selected_page,
+          "#groupdesc",
+          ["#plastic_parts", "#models_dropdown"],
+          async () => {
+            await selected_page.selectOption("#groupdesc", {
+              index: filters.groupdesc,
+            });
+          }
+        );
+      
+        if (!check.result) {
+          console.log("Change detected:", check);
+          return false;
+        }
       }
       if (filters.effect != null) {
-        await selected_page.selectOption("#effect", { index: filters.effect });
+        const check = await checkDependentChange(
+          selected_page,
+          "#effect",
+          ["#plastic_parts", "#models_dropdown", "#groupdesc"],
+          async () => {
+            await selected_page.selectOption("#effect", { index: filters.effect });
+          }
+        );
+      
+        if (!check.result) {
+          console.log("Change detected:", check);
+          return false;
+        }
       }
       if (filters.description != null) {
         await selected_page.fill("#description", filters.description);
@@ -765,9 +813,19 @@ async function get_model_drop_down(selected_page = null, filters) {
     let model_drop_down_text = filters.model_text ?? models[filters.model];
     console.log("model_drop_down_text : ", model_drop_down_text);
     if (model_drop_down_text) {
-      await selected_page.selectOption("#models_dropdown", {
-        label: filters.model_text,
-      });
+      // await selected_page.selectOption("#models_dropdown", {
+      //   label: model_drop_down_text,
+      //   // label: filters.model_text,
+      // });
+      // await selected_page.evaluate(() => {// ensure trigger the change event
+      //   const el = document.querySelector("#models_dropdown");
+      //   el.dispatchEvent(new Event("change", { bubbles: true }));
+      // });
+      await selected_page.evaluate((text) => {// combination of above code Finds the option by its label.Sets it as selected.Triggers the change event.
+        const el = document.querySelector("#models_dropdown");
+        el.value = [...el.options].find(o => o.label === text)?.value || "";
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }, model_drop_down_text);
     }
 
     // await selected_page.selectOption('#models_dropdown', { index: filters.model });
@@ -776,7 +834,39 @@ async function get_model_drop_down(selected_page = null, filters) {
   _models_drop_down = models;
   return models;
 }
+async function checkDependentChange(selected_page, triggerSelector, dependentSelectors, selectCallback) {
+  // Take snapshots before change
+  const before = {};
+  for (const sel of dependentSelectors) {
+    before[sel] = await selected_page.$$eval(`${sel} option`, opts => opts.map(o => o.textContent.trim()));
+  }
 
+  // Execute dropdown change (your logic)
+  await selectCallback();
+
+  // Give time for AJAX/DOM updates
+  await selected_page.waitForTimeout(1500);
+
+  // Take snapshots after change
+  const after = {};
+  for (const sel of dependentSelectors) {
+    after[sel] = await selected_page.$$eval(`${sel} option`, opts => opts.map(o => o.textContent.trim()));
+  }
+
+  // Compare
+  for (const sel of dependentSelectors) {
+    const changed = JSON.stringify(before[sel]) !== JSON.stringify(after[sel]);
+    if (changed) {
+      return {
+        result: false,
+        changedDropdown: sel,
+        triggerDropdown: triggerSelector
+      };
+    }
+  }
+
+  return { result: true };
+}
 async function get_year_drop_down() {
   return [
     // 109
@@ -892,7 +982,7 @@ async function get_year_drop_down() {
   ];
 }
 async function get_related_colors_drop_down() {
-  return ["Related Colors"];
+  // return ["Related Colors"];
   return [
     //13 "Related Colors",
     "Related Colors",

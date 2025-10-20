@@ -8,9 +8,9 @@ let duplicateRecords = 0;
 let db_store;
 
 $(function(){
-    setTimeout(() => {
-        $('#loadButton').click();
-    }, 10000);
+    // setTimeout(() => {
+    //     $('#loadButton').click();
+    // }, 10000);
 })
 
 function clear_previous_record() {
