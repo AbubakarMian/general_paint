@@ -3,7 +3,7 @@ const { chromium } = require("playwright");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
-const { json } = require("stream/consumers");
+const { json, text } = require("stream/consumers");
 const app = express();
 const PORT = 5005;
 app.use(cors());
@@ -16,6 +16,7 @@ let multitone_page = null;
 let filters_obj = {};
 let interceptedRequests = [];
 let _models_drop_down = [];
+let outputFilePath=null;
 const xlsx = require("xlsx");
 const { createCanvas } = require("canvas");
 let current_filter_csv = "paint/current_filter_csv.csv";
@@ -29,23 +30,26 @@ let currentRecursionDepth = 0;
 async function loadUrl(retries = 1000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      browser = await chromium.launch({
-        headless: false,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-blink-features=AutomationControlled",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--window-size=1280,720",
-        ],
-      });
-      context = await browser.newContext();
-      page = await browser.newPage();
-      await page.setExtraHTTPHeaders({
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-      });
+      if (!browser){
+        browser = await chromium.launch({
+          headless: false,
+          args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--window-size=1280,720",
+          ],
+        });
+        context = await browser.newContext();
+        page = await browser.newPage();
+        await page.setExtraHTTPHeaders({
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        });
+      }
+      
       await page.goto("https://generalpaint.info/v2/site/login", {
         timeout: 90000,
       });
@@ -63,7 +67,7 @@ async function loadUrl(retries = 1000) {
       await multitone_page.goto("https://generalpaint.info/v2/site/login");
       return true;
     } catch (err) {
-      if (browser) {
+      if (browser&& attempt%5 === 0) {
         try {
           await browser.close();
         } catch (closeErr) {
@@ -99,7 +103,13 @@ async function loginPage(page) {
   try {
     // First ensure we're on a valid page
     if (!page.url().startsWith("https://generalpaint.info/v2/")) {
-      await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded" });
+      // await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded" });
+      await page.goto(SEARCH_URL);
+      await Promise.all([
+        page.waitForSelector(usernameSelector, { visible: true }),
+        page.waitForSelector(passwordSelector, { visible: true }),
+        page.waitForSelector(submitSelector, { visible: true })
+      ]);
     }
 
     // Look for either logout form or user profile indicator
@@ -158,28 +168,328 @@ app.get("/loadurl", async (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    let url = req.query.url || "";
-
     console.log(`step 1 `);
     res.write(`data: [loggingIn]\n\n`);
+console.log(req.query);
+    // Extract filter parameters
+    outputFilePath = req.query.outputFilePath;
+    const filters = {
+      outputFilePath: req.query.outputFilePath || null,
+      make: req.query.make || null,
+      year: req.query.year || 0,
+      model: req.query.model || null,
+      plastic_parts: req.query.related_colors || 0,
+      groupdesc: req.query.color_family || 0,
+      effect: req.query.solid_effect || 0
+    };
+console.log('outputFilePath',req.query.outputFilePath);
+console.log('all query',req.query);
 
-    let logged_in = await loadUrl();
-    if (logged_in) {
-      res.write(`data: [loadurlSuccess]\n\n`);
+    // Validate required fields
+    if (!filters.outputFilePath) {
+      res.write(`data: [ERROR: Output file path is required]\n\n`);
       res.end();
       return;
-    } else {
-      res.write(`data: [ERRORURLNOTLOADED]\n\n`);
-      res.end();
     }
+    let logged_in = await loadUrl();
+    // Set filters and create/update CSV
+    
+    
+      
+      if (logged_in) {
+        res.write(`data: [loadurlSuccess]\n\n`);
+        const filterSetSuccess = await setFiltersAndUpdateCSV(filters);
+        res.write(`data: [setFiltersAndUpdateCSVsuccess]\n\n`);
+
+        if (filterSetSuccess) {
+        res.end();
+      } else {
+        res.write(`data: [ERROR: Failed to set filters]\n\n`);
+        res.end();
+      }
+        return;
+      } else {
+        res.write(`data: [ERRORURLNOTLOADED]\n\n`);
+        res.end();
+      }
+    
   } catch (error) {
-    console.error(`Error in /demand_base route: ${error.message}`);
-    // res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    console.error(`Error in /loadurl route: ${error.message}`);
     res.write(`data: [ERROR]\n\n`);
     res.end();
   }
 });
 
+async function setFiltersAndUpdateCSV(filters) {
+  try {
+    filters_obj = filters;
+      let randomWaitTime = getRandomNumber(5000, 6500);
+
+    // await setSearchFilters(page);
+    await page.selectOption("#make_dropdown", {
+      label: filters.make,
+    });
+    await page.waitForTimeout(randomWaitTime);
+
+    await page.evaluate((model) => {
+      // Use Bootstrap Select's API to select the option
+      $('#models_dropdown').selectpicker('val', model);
+      // Or if you need to select by visible text:
+      // $('#models_dropdown').selectpicker('val', model);
+    }, filters.model);
+    console.log("Setting filters and updating CSV...",filters);
+    
+    // Build the filter row with indices
+    const filterRow = await buildFilterRow(filters);
+    
+    // Write to CSV
+    writeCurrentRowToCsv(filterRow);
+    
+    console.log("✓ Filters set and CSV updated successfully");
+    return true;
+    
+  } catch (error) {
+    console.error("❌ Error setting filters:", error);
+    return false;
+  }
+}
+// Function to build the filter row with indices
+async function buildFilterRow(filters) {
+  try {
+    console.log("Building filter row with indices...");
+    
+    // Find indices for each enabled filter
+    const makeIndex = await findDropdownIndex("#make_dropdown", filters.make);
+    const yearIndex = await findDropdownIndex("#year", filters.year);
+    const modelIndex = await findDropdownIndex("#models_dropdown", filters.model);
+    const relatedColorsIndex = await findDropdownIndex("#related_colors_dropdown", filters.related_colors);
+    const colorFamilyIndex = await findDropdownIndex("#color_family_dropdown", filters.color_family);
+    const solidEffectIndex = await findDropdownIndex("#solid_effect_dropdown", filters.solid_effect);
+    // Construct CSV row
+    const csvRow = `${makeIndex},${filters.make || ""},${yearIndex},${filters.year || ""},${modelIndex},${filters.model || ""},${relatedColorsIndex},${filters.plastic_parts || ""},${colorFamilyIndex},${filters.groupdesc || ""},${solidEffectIndex},${filters.effect || ""}`;
+    
+    console.log("✓ Filter row built:", csvRow);
+    return csvRow;
+    
+  } catch (error) {
+    console.error("❌ Error building filter row:", error);
+    throw error;
+  }
+}
+async function findDropdownIndex_del(selector, text) {
+  try {
+    console.log(`Looking for option "${text}" in dropdown ${selector}`);
+    
+    await page.waitForSelector(selector, { timeout: 10000 });
+    
+    // Use destructuring in the function parameters directly
+    const result = await page.evaluate(({ selector, searchText }) => {
+      const dropdown = document.querySelector(selector);
+      if (!dropdown) {
+        return { error: `Dropdown with selector ${selector} not found` };
+      }
+      
+      const options = dropdown.options;
+      const availableOptions = [];
+      
+      console.log(`Available options in ${selector}:`);
+      for (let i = 0; i < options.length; i++) {
+        availableOptions.push({
+          index: i,
+          text: options[i].text.trim(),
+          value: options[i].value
+        });
+        console.log(`  [${i}] "${options[i].text.trim()}" (value: ${options[i].value})`);
+      }
+      
+      // Normalize search text
+      const normalizedSearchText = searchText.trim().toLowerCase();
+      
+      // Strategy 1: Exact match (case insensitive)
+      for (let i = 0; i < options.length; i++) {
+        if (options[i].text.trim().toLowerCase() === normalizedSearchText) {
+          return { index: i, matchType: 'exact', matchedText: options[i].text.trim() };
+        }
+      }
+      
+      // Strategy 2: Contains match
+      for (let i = 0; i < options.length; i++) {
+        if (options[i].text.trim().toLowerCase().includes(normalizedSearchText)) {
+          return { index: i, matchType: 'contains', matchedText: options[i].text.trim() };
+        }
+      }
+      
+      // Strategy 3: Value match
+      for (let i = 0; i < options.length; i++) {
+        if (options[i].value.trim().toLowerCase() === normalizedSearchText) {
+          return { index: i, matchType: 'value', matchedText: options[i].text.trim() };
+        }
+      }
+      
+      // Strategy 4: Fuzzy match (if no other matches found)
+      for (let i = 0; i < options.length; i++) {
+        const optionText = options[i].text.trim().toLowerCase();
+        if (optionText.includes(normalizedSearchText) || 
+            normalizedSearchText.includes(optionText)) {
+          return { index: i, matchType: 'fuzzy', matchedText: options[i].text.trim() };
+        }
+      }
+      
+      return { 
+        error: `Option "${searchText}" not found in dropdown ${selector}`,
+        availableOptions: availableOptions
+      };
+      
+    }, { selector, searchText: text }); // Pass parameters with correct names
+
+    if (result.error) {
+      console.error(`Dropdown ${selector} options:`, result.availableOptions);
+      throw new Error(result.error);
+    }
+
+    console.log(`✓ Found option "${text}" at index ${result.index} (${result.matchType} match) - "${result.matchedText}"`);
+    return result.index;
+
+  } catch (error) {
+    console.error(`❌ Error finding dropdown index for "${text}" in ${selector}:`, error.message);
+    
+    // Debugging code remains the same...
+    try {
+      const availableOptions = await page.evaluate((selector) => {
+        const dropdown = document.querySelector(selector);
+        if (!dropdown) return 'Dropdown not found';
+        
+        const options = [];
+        for (let i = 0; i < dropdown.options.length; i++) {
+          options.push({
+            index: i,
+            text: dropdown.options[i].text.trim(),
+            value: dropdown.options[i].value
+          });
+        }
+        return options;
+      }, selector);
+      
+      console.log(`Available options in ${selector}:`, availableOptions);
+    } catch (debugError) {
+      console.error('Could not retrieve available options for debugging:', debugError);
+    }
+    
+    throw error;
+  }
+}
+async function findDropdownIndex(selector, text) {
+  try {
+    // Return index 0 for empty/missing text
+    if (!text || text.trim() === '') {
+      console.log(`No text provided for ${selector}, returning index 0`);
+      return 0;
+    }
+
+    console.log(`Looking for option "${text}" in dropdown ${selector}`);
+    
+    await page.waitForSelector(selector, { timeout: 10000 });
+    
+    const result = await page.evaluate(({ selector, searchText }) => {
+      const dropdown = document.querySelector(selector);
+      if (!dropdown) {
+        return { error: `Dropdown with selector ${selector} not found` };
+      }
+      
+      const options = dropdown.options;
+      const availableOptions = [];
+      
+      console.log(`Available options in ${selector}:`);
+      for (let i = 0; i < options.length; i++) {
+        availableOptions.push({
+          index: i,
+          text: options[i].text.trim(),
+          value: options[i].value
+        });
+        console.log(`  [${i}] "${options[i].text.trim()}" (value: ${options[i].value})`);
+      }
+      
+      // If no options or only empty option, return 0
+      if (options.length === 0 || (options.length === 1 && options[0].text.trim() === '')) {
+        return { index: 0, matchType: 'default', matchedText: '' };
+      }
+      
+      // Normalize search text
+      const normalizedSearchText = searchText.trim().toLowerCase();
+      
+      // Strategy 1: Exact match (case insensitive)
+      for (let i = 0; i < options.length; i++) {
+        if (options[i].text.trim().toLowerCase() === normalizedSearchText) {
+          return { index: i, matchType: 'exact', matchedText: options[i].text.trim() };
+        }
+      }
+      
+      // Strategy 2: Contains match
+      for (let i = 0; i < options.length; i++) {
+        if (options[i].text.trim().toLowerCase().includes(normalizedSearchText)) {
+          return { index: i, matchType: 'contains', matchedText: options[i].text.trim() };
+        }
+      }
+      
+      // Strategy 3: Value match
+      for (let i = 0; i < options.length; i++) {
+        if (options[i].value.trim().toLowerCase() === normalizedSearchText) {
+          return { index: i, matchType: 'value', matchedText: options[i].text.trim() };
+        }
+      }
+      
+      // Strategy 4: Fuzzy match (if no other matches found)
+      for (let i = 0; i < options.length; i++) {
+        const optionText = options[i].text.trim().toLowerCase();
+        if (optionText.includes(normalizedSearchText) || 
+            normalizedSearchText.includes(optionText)) {
+          return { index: i, matchType: 'fuzzy', matchedText: options[i].text.trim() };
+        }
+      }
+      
+      // If no match found, return index 0 (default/empty option)
+      console.log(`No match found for "${searchText}", returning index 0`);
+      return { index: 0, matchType: 'default', matchedText: options[0]?.text.trim() || '' };
+      
+    }, { selector, searchText: text });
+
+    if (result.error) {
+      console.warn(`Warning for ${selector}: ${result.error}. Returning index 0`);
+      return 0;
+    }
+
+    console.log(`✓ Found option "${text}" at index ${result.index} (${result.matchType} match) - "${result.matchedText}"`);
+    return result.index;
+
+  } catch (error) {
+    console.error(`❌ Error finding dropdown index for "${text}" in ${selector}:`, error.message);
+    console.warn(`Returning index 0 as fallback`);
+    
+    // Debugging
+    try {
+      const availableOptions = await page.evaluate((selector) => {
+        const dropdown = document.querySelector(selector);
+        if (!dropdown) return 'Dropdown not found';
+        
+        const options = [];
+        for (let i = 0; i < dropdown.options.length; i++) {
+          options.push({
+            index: i,
+            text: dropdown.options[i].text.trim(),
+            value: dropdown.options[i].value
+          });
+        }
+        return options;
+      }, selector);
+      
+      console.log(`Available options in ${selector}:`, availableOptions);
+    } catch (debugError) {
+      console.error('Could not retrieve available options for debugging:', debugError);
+    }
+    
+    return 0; // Return 0 instead of throwing error
+  }
+}
 async function scrapFormaulaDetailsData(container) {
   let sid = container.sid;
   let id = container.familyId;
@@ -1708,11 +2018,14 @@ const escapeCsvValue = (value) => {
 
   return str;
 };
+
+
 async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
   const makeDropdown = await get_make_drop_down();
   const filePath = "paint/sheets/";
   fs.mkdirSync(path.join("paint", "sheets"), { recursive: true });
-  fileName = path.join(filePath, `${makeDropdown[filters_obj.make]}.csv`);
+  // fileName = path.join(filePath, `${makeDropdown[filters_obj.make]}.csv`);
+  fileName = outputFilePath;
   console.log("excel 4");
 
   const cleanedDataArray = dataArray.map((row) => {

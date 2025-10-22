@@ -1,0 +1,6 @@
+@echo off
+echo Opening Browser...
+start "" "E:\python\node_apps\general_paint\general_paint.html"
+echo Running Node.js Script...
+node E:\python\node_apps\general_paint\general_paint.js
+

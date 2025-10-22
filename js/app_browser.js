@@ -1,124 +1,209 @@
 let eventSource;
 let isStopped = false;
-let db;
-let table_data = [];
 let totalRecords = 0;
 let uniqueRecords = 0;
 let duplicateRecords = 0;
-let db_store;
+let pagesScraped = 0;
 
-$(function(){
-    // setTimeout(() => {
-    //     $('#loadButton').click();
-    // }, 10000);
-})
+// Initialize event listeners
+$(document).ready(function() {
+    console.log("Initializing General Paint Scraper...");
+    
+    // File path selector change handler
+    $('#outputFilePath').change(function() {
+        if ($(this).val() === 'custom') {
+            $('#customFilePath').show().focus();
+        } else {
+            $('#customFilePath').hide();
+        }
+    });
+    
+    // Add event listeners for filter checkboxes
+    $('#enableMake').change(function() {
+        $('#make').toggle(this.checked).focus();
+        if (this.checked) {
+            $('#make').addClass('border-primary');
+        } else {
+            $('#make').removeClass('border-primary');
+        }
+    });
+    
+    $('#enableYear').change(function() {
+        $('#year').toggle(this.checked).focus();
+        if (this.checked) {
+            $('#year').addClass('border-primary');
+        } else {
+            $('#year').removeClass('border-primary');
+        }
+    });
+    
+    $('#enableModel').change(function() {
+        $('#model').toggle(this.checked).focus();
+        if (this.checked) {
+            $('#model').addClass('border-primary');
+        } else {
+            $('#model').removeClass('border-primary');
+        }
+    });
+    
+    $('#enableRelatedColors').change(function() {
+        $('#related_colors').toggle(this.checked).focus();
+        if (this.checked) {
+            $('#related_colors').addClass('border-primary');
+        } else {
+            $('#related_colors').removeClass('border-primary');
+        }
+    });
+    
+    $('#enableColorFamily').change(function() {
+        $('#color_family').toggle(this.checked).focus();
+        if (this.checked) {
+            $('#color_family').addClass('border-primary');
+        } else {
+            $('#color_family').removeClass('border-primary');
+        }
+    });
+    
+    $('#enableSolidEffect').change(function() {
+        $('#solid_effect').toggle(this.checked).focus();
+        if (this.checked) {
+            $('#solid_effect').addClass('border-primary');
+        } else {
+            $('#solid_effect').removeClass('border-primary');
+        }
+    });
+
+    // Set default file path
+    $('#outputFilePath').val('paint/sheets/paint_data.csv');
+});
 
 function clear_previous_record() {
-    db_store.clear().onsuccess = () => {
-        console.log("Previous IndexedDB data cleared.");
-        resolve();
-    };
+    console.log("Clear previous record function called");
+    // Reset counters
+    totalRecords = 0;
+    uniqueRecords = 0;
+    duplicateRecords = 0;
+    pagesScraped = 0;
+    updateRecordNumbers();
+    showToast("Previous data cleared successfully");
 }
 
-function initializeIndexedDB() {
-    return new Promise((resolve, reject) => {
-        const dbRequest = indexedDB.open("UniqueRecordsDB", 1);
+function updateRecordNumbers(total = totalRecords, unique = uniqueRecords, duplicate = duplicateRecords) {
+    $('#total').text(total);
+    $('#unique').text(unique);
+    $('#duplicate').text(duplicate);
+    $('#pages_scraped').text(pagesScraped);
+}
 
-        dbRequest.onupgradeneeded = (event) => {
-            db = event.target.result;
-            if (!db.objectStoreNames.contains("records")) {
-                db.createObjectStore("records", { keyPath: "uniqueKey" });
-            }
-        };
-
-        dbRequest.onsuccess = (event) => {
-            db = event.target.result;
-            const transaction = db.transaction("records", "readwrite");
-            db_store = transaction.objectStore("records");
-
-            // store.clear().onsuccess = () => {
-            //     console.log("Previous IndexedDB data cleared.");
-            //     resolve();
-            // };
-
-            transaction.onerror = (error) => {
-                console.error("Error clearing IndexedDB:", error);
-                reject(error);
-            };
-        };
-
-        dbRequest.onerror = (event) => {
-            console.error("Error initializing IndexedDB:", event.target.error);
-            reject(event.target.error);
-        };
+function addRecordToTable(records_arr) {
+    records_arr.forEach(record => {
+        totalRecords++;
+        uniqueRecords++; // Since we removed IndexedDB, all records are considered unique
+        
+        // Add to table
+        addRowsToTable(records_arr, document.querySelector("#dataTable tbody"));
     });
+    
+    updateRecordNumbers();
+    showToast(`✓ ${records_arr.length} records added successfully`);
 }
 
-function addRecordToIndexedDB(records_arr, onSuccess, onDuplicate) {
-    if (!db) {
-        console.error("IndexedDB is not initialized!");
+function getOutputFilePath() {
+    return $('#customFilePath').val().trim();
+    const selectedPath = $('#outputFilePath').val();
+    if (selectedPath === 'custom') {
+        return $('#customFilePath').val().trim();
+    }
+    return selectedPath;
+}
+
+function validateForm() {
+    const outputFilePath = $('#customFilePath').val().trim();
+    
+    if (!outputFilePath) {
+        showErrorToast("Please select or enter an output file path");
+        $('#customFilePath').focus();
+        return false;
+    }
+    
+    // Validate file path format
+    if (!outputFilePath.endsWith('.csv')) {
+        showErrorToast("Output file path must end with .csv");
+        $('#customFilePath').focus();
+        return false;
+    }
+    
+    return true;
+}
+
+document.getElementById("startButton").addEventListener("click", () => {
+    if (!validateForm()) {
         return;
     }
-    const transaction = db.transaction("records", "readwrite");
-    const store = transaction.objectStore("records");
 
-    records_arr.forEach(record => {
-        const getRequest = store.get(record.uniqueKey);
-        totalRecords++;
-        getRequest.onsuccess = () => {
-            if (!getRequest.result) {
-                const addRequest = store.add(record);
-                addRequest.onsuccess = onSuccess;
-                uniqueRecords++;
-            } else {
-                // onDuplicate();
-                duplicateRecords++;
-            }
-            // updateRecordNumbers(totalRecords, uniqueRecords, duplicateRecords);
-        };
-        updateRecordNumbers(totalRecords, uniqueRecords, duplicateRecords);
-
-
-        getRequest.onerror = () => {
-            console.error("Error accessing IndexedDB.");
-        };
-    });
-
-}
-function updateRecordNumbers(totalRecords, uniqueRecords, duplicateRecords) {
-    $('#total').text(totalRecords);
-    $('#unique').text(uniqueRecords);
-    $('#duplicate').text(duplicateRecords);
-}
-document.getElementById("startButton").addEventListener("click", () => {
-    // $("#startButton").css("display", "none");
-    $("#stopButton").css("display", "block");
-    $("#downloadCsvButton").css("display", "none");
+    $("#stopButton").css("display", "inline-block");
+    $("#startButton").css("display", "none");
+    $("#clear_previous_data").css("display", "inline-block");
 
     const tableBody = document.querySelector("#dataTable tbody");
-    initializeIndexedDB();
+    
     // Prevent starting if already running
     if (eventSource && !isStopped) return;
 
     console.log("Starting data fetch...");
     isStopped = false;
-    tableBody.innerHTML = "";
+    
+    // Show table and hide no data message
+    $("#dataTable").css("display", "table");
+    $("#noDataMessage").css("display", "none");
+    $(".record-info").css("display", "block");
+
     let start_page = $('#start_page').val();
 
-    // Replace with your actual API endpoint
-    eventSource = new EventSource(`http://localhost:5005/general_paint?start_page=${start_page}`);
+    // Build query parameters with filters
+    let queryParams = `start_page=${start_page}`;
+    
+    // Add output file path
+    const outputFilePath = getOutputFilePath();
+    queryParams += `&outputFilePath=${encodeURIComponent(outputFilePath)}`;
+    
+    // Add optional filters if enabled
+    if ($('#enableMake').is(':checked')) {
+        queryParams += `&make=${encodeURIComponent($('#make').val())}`;
+    }
+    if ($('#enableYear').is(':checked')) {
+        queryParams += `&year=${encodeURIComponent($('#year').val())}`;
+    }
+    if ($('#enableModel').is(':checked')) {
+        queryParams += `&model=${encodeURIComponent($('#model').val())}`;
+    }
+    if ($('#enableRelatedColors').is(':checked')) {
+        queryParams += `&related_colors=${encodeURIComponent($('#related_colors').val())}`;
+    }
+    if ($('#enableColorFamily').is(':checked')) {
+        queryParams += `&color_family=${encodeURIComponent($('#color_family').val())}`;
+    }
+    if ($('#enableSolidEffect').is(':checked')) {
+        queryParams += `&solid_effect=${encodeURIComponent($('#solid_effect').val())}`;
+    }
 
-    console.log('event', eventSource);
+    // Replace with your actual API endpoint
+    eventSource = new EventSource(`http://localhost:5005/general_paint?${queryParams}`);
+
+    console.log('Starting EventSource with params:', queryParams);
+    
     eventSource.onmessage = (event) => {
-        console.log('event.data onmessage function', event.data);
+        console.log('Event data:', event.data);
+        
         if (event.data === "[loggingIn]") {
-            showLoadingModal("Scrapper Started");
+            showLoadingModal("Scraper Started - Loading data...");
             return;
         }
 
         if (event.data === "[DONE]") {
             eventSource.close();
             $("#stopButton").click();
+            showToast("✅ Data extraction completed successfully!");
             return;
         }
 
@@ -130,29 +215,32 @@ document.getElementById("startButton").addEventListener("click", () => {
         }
 
         hideLoadingModal();
-        const response = JSON.parse(event.data);
-        const page_num = response.page_num ?? '';
-        const rowsData = response.data;
-        if (!isNaN(page_num)) {
-            $('#pages_scraped').text(page_num);
-        }
-        addRecordToIndexedDB(
-            rowsData,
-            () => {
-                addRowsToTable(rowsData, tableBody);
-                showToast(`${rowsData.length} Rows added successfully`);
-            },
-            () => {
-                showErrorToast(`Duplicate data found`);
+        
+        try {
+            const response = JSON.parse(event.data);
+            const page_num = response.page_num ?? '';
+            const rowsData = response.data;
+            
+            if (!isNaN(page_num)) {
+                pagesScraped = page_num;
+                $('#pages_scraped').text(pagesScraped);
             }
-        );
+            
+            if (rowsData && rowsData.length > 0) {
+                addRecordToTable(rowsData);
+            }
+        } catch (error) {
+            console.error("Error parsing event data:", error);
+        }
     };
 
     eventSource.onerror = (error) => {
-        showErrorToast(`Browser isn't responding please close captch its closed and try agin from page number ${rowsData.page_num}.`);
+        showErrorToast(`❌ Browser isn't responding. Please check if any captcha needs to be solved and try again.`);
         console.error("Error receiving data:", error);
         showServerError();
-        eventSource.close();
+        if (eventSource) {
+            eventSource.close();
+        }
     };
 });
 
@@ -163,7 +251,10 @@ function showLoadingModal(message) {
 }
 
 function hideLoadingModal() {
-    $("#closeLoadingbtn").click();
+    const loadingModal = bootstrap.Modal.getInstance(document.getElementById("loadingModal"));
+    if (loadingModal) {
+        loadingModal.hide();
+    }
 }
 
 function showServerError() {
@@ -171,14 +262,16 @@ function showServerError() {
 }
 
 function addRowsToTable(rowsData, tableBody) {
-    tableBody.innerHTML = "";
+    // Clear table first to show only latest data (or append - your choice)
+    tableBody.innerHTML = ""; // Uncomment to clear table each time
+    
     rowsData.forEach(rowData => {
         const newRow = document.createElement("tr");
         newRow.innerHTML = `
-        <td>${rowData.name}</td>
-        <td>${rowData.email}</td>
-        <td>${rowData.phone}</td>
-        <td>${rowData.address}</td>`;
+            <td>${rowData.name || ''}</td>
+            <td>${rowData.email || ''}</td>
+            <td>${rowData.phone || ''}</td>
+            <td>${rowData.address || ''}</td>`;
         tableBody.appendChild(newRow);
     });
 }
@@ -202,112 +295,94 @@ window.addEventListener("beforeunload", () => {
 });
 
 document.getElementById('loadButton').addEventListener('click', async () => {
-    $("#loadButton").css('display', 'none');
-    $("#startButton").css('display', 'block');
-    $("#stopButton").css('display', 'none');
-    $("#downloadCsvButton").css('display', 'none');
-    // await fetch('http://localhost:5005/loadurl', { method: 'GET' });
+    if (!validateForm()) {
+        return;
+    }
 
+    // Show loading state
+    $("#loadButton").prop('disabled', true).html('⏳ Loading...');
     
-    const es = new EventSource("http://localhost:5005/loadurl");
+    // Build query parameters with filters for loadurl
+    let queryParams = '';
+    
+    // Add output file path
+    const outputFilePath = getOutputFilePath();
+    queryParams += `outputFilePath=${encodeURIComponent(outputFilePath)}`;
+    
+    // Add optional filters if enabled
+    if ($('#enableMake').is(':checked')) {
+        queryParams += `&make=${encodeURIComponent($('#make').val())}`;
+    }
+    if ($('#enableYear').is(':checked')) {
+        queryParams += `&year=${encodeURIComponent($('#year').val())}`;
+    }
+    if ($('#enableModel').is(':checked')) {
+        queryParams += `&model=${encodeURIComponent($('#model').val())}`;
+    }
+    if ($('#enableRelatedColors').is(':checked')) {
+        queryParams += `&related_colors=${encodeURIComponent($('#related_colors').val())}`;
+    }
+    if ($('#enableColorFamily').is(':checked')) {
+        queryParams += `&color_family=${encodeURIComponent($('#color_family').val())}`;
+    }
+    if ($('#enableSolidEffect').is(':checked')) {
+        queryParams += `&solid_effect=${encodeURIComponent($('#solid_effect').val())}`;
+    }
 
-    es.onmessage = (event) => {
-        console.log("SSE:", event.data);
+    showLoadingModal("Opening browser and loading URL...");
 
-        if (event.data === "[loadurlSuccess]") {
-            es.close();                       // close SSE connection
-            $("#startButton").show().trigger("click"); // show + auto-click
-        }
+    try {
+        const es = new EventSource(`http://localhost:5005/loadurl?${queryParams}`);
 
-        if (event.data.startsWith("[ERROR")) {
+        es.onmessage = (event) => {
+            console.log("SSE:", event.data);
+
+            if (event.data === "[loadurlSuccess]") {
+                es.close();
+                hideLoadingModal();
+                $("#loadButton").css('display', 'none');
+                $("#startButton").css('display', 'inline-block');
+                showToast("✅ Browser opened successfully! Ready to start search.");
+            }
+
+            if (event.data.startsWith("[ERROR")) {
+                es.close();
+                hideLoadingModal();
+                $("#loadButton").prop('disabled', false).html('🚀 Open Browser & Load URL');
+                showErrorToast("❌ Error loading URL: " + event.data);
+            }
+        };
+        
+        es.onerror = (error) => {
+            console.error("Error in loadurl:", error);
             es.close();
-            alert("Error loading URL: " + event.data);
-        }
-    };
-    console.log("Open browser.");
+            hideLoadingModal();
+            $("#loadButton").prop('disabled', false).html('🚀 Open Browser & Load URL');
+            showErrorToast("❌ Error connecting to server");
+        };
+        
+    } catch (error) {
+        console.error("Error starting loadurl:", error);
+        hideLoadingModal();
+        $("#loadButton").prop('disabled', false).html('🚀 Open Browser & Load URL');
+        showErrorToast("❌ Failed to start browser session");
+    }
 });
 
 document.getElementById('stopButton').addEventListener('click', async () => {
-    $("#startButton").css('display', 'none');
+    $("#startButton").css('display', 'inline-block');
     $("#stopButton").css('display', 'none');
-    // $("#downloadCsvButton").css('display', 'block');
 
     if (eventSource) {
         isStopped = true;
         eventSource.close();
         eventSource = null;
-        await fetch('http://localhost:5005/stop_scraping', { method: 'GET' });
+        try {
+            await fetch('http://localhost:5005/stop_scraping', { method: 'GET' });
+            showToast("⏹ Search stopped successfully");
+        } catch (error) {
+            console.error("Error stopping scraping:", error);
+        }
         console.log("Scraping stopped by the user.");
     }
 });
-
-function getAllRecords() {
-    // const transaction = db.transaction("records", "readwrite");
-    // const store = transaction.objectStore("records");
-    return new Promise((resolve, reject) => {
-    //   const transaction = db.transaction(storeName, "readonly");
-    //   const store = transaction.objectStore(storeName);
-      const request = db_store.getAll();
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  function convertToCSV(data) {
-    if (!data.length) return "";
-
-    // Extract headers (keys of the first object)
-    const headers = Object.keys(data[0]);
-    const csvRows = [headers.join(",")]; // Add headers as the first row
-
-    // Add data rows
-    data.forEach((record) => {
-      const row = headers.map((header) => {
-        const value = record[header];
-        // Escape quotes in values
-        return `"${String(value || "").replace(/"/g, '""')}"`;
-      });
-      csvRows.push(row.join(","));
-    });
-
-    return csvRows.join("\n");
-  }
-
-  // Trigger download of CSV data
-  function downloadCSV(csvData) {
-    const blob = new Blob([csvData], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const link = $("<a>")
-      .attr("href", url)
-      .attr("download", "data.csv")
-      .appendTo("body");
-    link[0].click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  // Handle button click to download CSV
-  $("#download").on("click", async () => {
-
-  });
-
-  async function downloadData(event){
-    try {
-    event.preventDefault();
-
-        // const db = await openDatabase();
-        const records = await getAllRecords();
-  
-        // Convert records to CSV and download
-        const csvData = convertToCSV(records);
-        if (csvData) {
-          downloadCSV(csvData);
-        } else {
-          alert("No data to download!");
-        }
-      } catch (error) {
-        console.error("Error downloading CSV:", error);
-      }
-  }
-
