@@ -61,6 +61,46 @@
         .file-path-input {
             font-family: monospace;
         }
+
+        .table-container {
+            max-width: 100%;
+            overflow-x: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+        }
+
+        #dataTable {
+            min-width: 1200px; /* Adjust based on your content */
+            margin-bottom: 0;
+        }
+
+        #dataTable thead th {
+            position: sticky;
+            top: 0;
+            background-color: #212529;
+            z-index: 10;
+        }
+
+        /* Optional: Add some padding and better spacing */
+        #dataTable th,
+        #dataTable td {
+            padding: 0.5rem;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        /* Make the color preview cells more compact */
+        #dataTable td:last-child {
+            min-width: 60px;
+        }
+
+        /* Style for the color background cells */
+        .color-preview {
+            width: 50px;
+            height: 50px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
     </style>
 </head>
 
@@ -117,10 +157,10 @@
                                 <option value="paint/sheets/color_data.csv">paint/sheets/color_data.csv</option>
                                 <option value="paint/sheets/general_paint.csv">paint/sheets/general_paint.csv</option>
                                 <option value="custom">Enter custom path...</option>
-                            </select> -->
+                            </select>  value="E:\python\node_apps\general_paint\paint\sheets\te1.csv"-->
                             <input type="text" id="customFilePath" name="outputFilePath" 
                                    class="form-control file-path-input mt-2" 
-                                   style="" value="E:\python\node_apps\general_paint\paint\sheets\te1.csv"
+                                   style="" value="E:\python\node_apps\general_paint\paint\sheets\renault_search2.csv"
                                    placeholder="Enter custom file path (e.g., paint/sheets/my_data.csv)">
                             <div class="form-text">
                                 Select a predefined file path or choose "Enter custom path" to specify your own
@@ -141,7 +181,7 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="enableMake" role="switch">
+                                <input class="form-check-input" checked type="checkbox" id="enableMake" role="switch">
                                 <label class="form-check-label" for="enableMake">
                                     <strong>Make</strong>
                                 </label>
@@ -152,18 +192,18 @@
                         
                         <div class="col-md-6 mb-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="enableYear" role="switch">
+                                <input class="form-check-input" checked type="checkbox" id="enableYear" role="switch">
                                 <label class="form-check-label" for="enableYear">
                                     <strong>Year</strong>
                                 </label>
                             </div>
-                            <input type="text" id="year" name="year" class="form-control filter-input mt-2" 
+                            <input type="text" id="year" name="year" value="2024" class="form-control filter-input mt-2" 
                                    style="display: none;" placeholder="Enter year">
                         </div>
                         
                         <div class="col-md-6 mb-3">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="enableModel" role="switch">
+                                <input class="form-check-input" checked type="checkbox" id="enableModel" role="switch">
                                 <label class="form-check-label" for="enableModel">
                                     <strong>Model</strong>
                                 </label>
@@ -172,7 +212,7 @@
                                    style="display: none;" value="CLIO" placeholder="Enter vehicle model">
                         </div>
                         
-                        <div class="col-md-6 mb-3">
+                        <!-- <div class="col-md-6 mb-3">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="enableRelatedColors" role="switch">
                                 <label class="form-check-label" for="enableRelatedColors">
@@ -203,7 +243,7 @@
                             </div>
                             <input type="text" id="solid_effect" name="solid_effect" class="form-control filter-input mt-2" 
                                    style="display: none;" placeholder="Enter solid effect">
-                        </div>
+                        </div> -->
                     </div>
                 </div>
             </div>
@@ -221,10 +261,10 @@
                 <button type="button" id="stopButton" style="display: none;" class="btn btn-danger btn-lg">
                     ⏹ Stop Search
                 </button>
-                <button id="clear_previous_data" class="btn btn-warning btn-lg" style="display: none;"  
+                <!-- <button id="clear_previous_data" class="btn btn-warning btn-lg" style="display: none;"  
                         onclick="clear_previous_record()">
                     🗑️ Clear Previous Data
-                </button>
+                </button> -->
             </div>
         </form>
 
@@ -235,7 +275,7 @@
                     <div>Total Records</div>
                     <span id="total" class="display-6">0</span>
                 </div>
-                <div class="col-md-3">
+                <!-- <div class="col-md-3">
                     <div>Unique Records</div>
                     <span id="unique" class="display-6">0</span>
                 </div>
@@ -246,7 +286,7 @@
                 <div class="col-md-3">
                     <div>Pages Scraped</div>
                     <span id="pages_scraped" class="display-6">0</span>
-                </div>
+                </div> -->
             </div>
         </div>
 
@@ -256,17 +296,30 @@
                 <h5 class="mb-0">📊 Extracted Data</h5>
             </div>
             <div class="card-body">
-                <table id="dataTable" style="display: none;" class="table table-striped table-hover">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Phone</th>
-                            <th>Address</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+                <div class="table-container">
+                    <table id="dataTable" style="display: none;" class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Family ID</th>
+                                <th>SID</th>
+                                <th>Make</th>
+                                <th>Model</th>
+                                <th>Description</th>
+                                <th>URL</th>
+                                <th>Content</th>
+                                <th>Year</th>
+                                <th>Color</th>
+                                <th>Color Code</th>
+                                <th>Tone</th>
+                                <th>Panel No</th>
+                                <th>Details</th>
+                                <th>Image</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        </table>
+                </div>
+            </div>
                 <div id="noDataMessage" class="text-center text-muted py-4">
                     No data extracted yet. Click "Open Browser & Load URL" to start.
                 </div>

@@ -98,12 +98,10 @@ function updateRecordNumbers(total = totalRecords, unique = uniqueRecords, dupli
 function addRecordToTable(records_arr) {
     records_arr.forEach(record => {
         totalRecords++;
-        uniqueRecords++; // Since we removed IndexedDB, all records are considered unique
-        
-        // Add to table
-        addRowsToTable(records_arr, document.querySelector("#dataTable tbody"));
+        uniqueRecords++;
     });
     
+    addRowsToTable(records_arr, document.querySelector("#dataTable tbody"));
     updateRecordNumbers();
     showToast(`✓ ${records_arr.length} records added successfully`);
 }
@@ -219,16 +217,18 @@ document.getElementById("startButton").addEventListener("click", () => {
         try {
             const response = JSON.parse(event.data);
             const page_num = response.page_num ?? '';
-            const rowsData = response.data;
-            
-            if (!isNaN(page_num)) {
-                pagesScraped = page_num;
-                $('#pages_scraped').text(pagesScraped);
+            const rowsData = response.rows ?? [];
+            if(response.type === "new_rows" && rowsData.length > 0){          
+                if (!isNaN(page_num)) {
+                    pagesScraped = page_num;
+                    $('#pages_scraped').text(pagesScraped);
+                }
+                
+                if (rowsData && rowsData.length > 0) {
+                    addRecordToTable(rowsData);
+                }
             }
             
-            if (rowsData && rowsData.length > 0) {
-                addRecordToTable(rowsData);
-            }
         } catch (error) {
             console.error("Error parsing event data:", error);
         }
@@ -262,19 +262,39 @@ function showServerError() {
 }
 
 function addRowsToTable(rowsData, tableBody) {
-    // Clear table first to show only latest data (or append - your choice)
-    tableBody.innerHTML = ""; // Uncomment to clear table each time
-    
-    rowsData.forEach(rowData => {
+    // Prepend new rows (add at beginning)
+    rowsData.reverse().forEach(rowData => { // Reverse to maintain order when prepending
         const newRow = document.createElement("tr");
         newRow.innerHTML = `
-            <td>${rowData.name || ''}</td>
-            <td>${rowData.email || ''}</td>
-            <td>${rowData.phone || ''}</td>
-            <td>${rowData.address || ''}</td>`;
-        tableBody.appendChild(newRow);
+            <td>${rowData.familyId || ''}</td>
+            <td>${rowData.sid || ''}</td>
+            <td>${rowData.make || ''}</td>
+            <td>${rowData.model || ''}</td>
+            <td>${rowData.description || ''}</td>
+            <td>${rowData.url || ''}</td>
+            <td>${rowData.content || ''}</td>
+            <td>${rowData.year || ''}</td>
+            <td>${rowData.color || ''}</td>
+            <td>${rowData.colorCode || ''}</td>
+            <td>${rowData.tone || ''}</td>
+            <td>${rowData.panelNo || ''}</td>
+            <td>${rowData.details || ''}</td>
+            <td>${rowData.image_path ? `<img src="${rowData.image_path}" alt="Color" style="max-width: 50px; max-height: 50px;">` : ''}</td>`;
+            // <td style="background-color: ${rowData.bgColor || 'transparent'}">${rowData.bgColor || ''}</td>
+        
+        // Prepend the new row (add at top)
+        tableBody.insertBefore(newRow, tableBody.firstChild);
     });
+
+    // Remove excess rows if more than 50
+    const allRows = tableBody.querySelectorAll('tr');
+    if (allRows.length > 25) {
+        for (let i = 25; i < allRows.length; i++) {
+            tableBody.removeChild(allRows[i]);
+        }
+    }
 }
+
 
 function showToast(message) {
     document.getElementById("toastContent").innerText = message;

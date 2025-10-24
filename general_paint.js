@@ -4,6 +4,8 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const { json, text } = require("stream/consumers");
+const axios = require("axios");
+const FormData = require("form-data");
 const app = express();
 const PORT = 5005;
 app.use(cors());
@@ -21,11 +23,13 @@ const xlsx = require("xlsx");
 const { createCanvas } = require("canvas");
 let current_filter_csv = "paint/current_filter_csv.csv";
 let all_completed_filter_csv = "paint/all_completed_filter_csv.csv";
+const API_URL = "https://development.hatinco.com/scratchrepaircar/upload_shopify.php";
 
 const MAX_RECURSION_DEPTH = 15;
 const MAX_VISITED_ENTRIES = 1500000;
 let visitedMultitones = new Set();
 let currentRecursionDepth = 0;
+let write_response = null;
 
 async function loadUrl(retries = 1000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -98,6 +102,9 @@ async function loginPage(page) {
   const LOGIN_URL = "https://generalpaint.info/v2/site/login";
   const SEARCH_URL = "https://generalpaint.info/v2/search";
   const LOGOUT_SELECTOR = 'form[action*="/v2/site/logout"]';
+  const usernameSelector = "#loginform-username";
+  const passwordSelector = "#loginform-password";
+  const submitSelector = "[name='login-button']";
 
   // Check if we're already logged in
   try {
@@ -126,9 +133,6 @@ async function loginPage(page) {
   // }
 
   // Perform login
-  const usernameSelector = "#loginform-username";
-  const passwordSelector = "#loginform-password";
-  const submitSelector = "[name='login-button']";
 
   try {
     await page.waitForSelector(usernameSelector, { timeout: 10000 });
@@ -138,6 +142,7 @@ async function loginPage(page) {
     await page.fill(passwordSelector, "7s1xpcnjqQ");
 
     // Click submit and wait for navigation
+    page.click(submitSelector);
     await Promise.all([
       page.waitForNavigation({ waitUntil: "networkidle", timeout: 15000 }),
       page.click(submitSelector),
@@ -167,13 +172,13 @@ app.get("/loadurl", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
-
+    write_response = res;
     console.log(`step 1 `);
     res.write(`data: [loggingIn]\n\n`);
 console.log(req.query);
     // Extract filter parameters
     outputFilePath = req.query.outputFilePath;
-    const filters = {
+    const filters_search = {
       outputFilePath: req.query.outputFilePath || null,
       make: req.query.make || null,
       year: req.query.year || 0,
@@ -182,11 +187,11 @@ console.log(req.query);
       groupdesc: req.query.color_family || 0,
       effect: req.query.solid_effect || 0
     };
-console.log('outputFilePath',req.query.outputFilePath);
-console.log('all query',req.query);
+    console.log('outputFilePath',req.query.outputFilePath);
+    console.log('all query',req.query);
 
     // Validate required fields
-    if (!filters.outputFilePath) {
+    if (!filters_search.outputFilePath) {
       res.write(`data: [ERROR: Output file path is required]\n\n`);
       res.end();
       return;
@@ -197,15 +202,12 @@ console.log('all query',req.query);
     
       
       if (logged_in) {
+        res.write(`data: [StartingsetFiltersAndUpdateCSVsuccess]\n\n`);
+        const filterSetSuccess = await setFiltersAndUpdateCSV(filters_search);
         res.write(`data: [loadurlSuccess]\n\n`);
-        const filterSetSuccess = await setFiltersAndUpdateCSV(filters);
-        res.write(`data: [setFiltersAndUpdateCSVsuccess]\n\n`);
 
-        if (filterSetSuccess) {
-        res.end();
-      } else {
+      if (!filterSetSuccess) {
         res.write(`data: [ERROR: Failed to set filters]\n\n`);
-        res.end();
       }
         return;
       } else {
@@ -220,15 +222,17 @@ console.log('all query',req.query);
   }
 });
 
-async function setFiltersAndUpdateCSV(filters) {
+async function setFiltersAndUpdateCSV(filters_search) {
   try {
-    filters_obj = filters;
+    // filters_obj = filters_search;
       let randomWaitTime = getRandomNumber(5000, 6500);
 
     // await setSearchFilters(page);
     await page.selectOption("#make_dropdown", {
-      label: filters.make,
+      label: filters_search.make,
     });
+    await page.waitForTimeout(randomWaitTime);
+    await page.selectOption("#year", { label: filters_search.year });
     await page.waitForTimeout(randomWaitTime);
 
     await page.evaluate((model) => {
@@ -236,11 +240,11 @@ async function setFiltersAndUpdateCSV(filters) {
       $('#models_dropdown').selectpicker('val', model);
       // Or if you need to select by visible text:
       // $('#models_dropdown').selectpicker('val', model);
-    }, filters.model);
-    console.log("Setting filters and updating CSV...",filters);
+    }, filters_search.model);
+    console.log("Setting filters and updating CSV...",filters_search);
     
     // Build the filter row with indices
-    const filterRow = await buildFilterRow(filters);
+    const filterRow = await buildFilterRow(filters_search);
     
     // Write to CSV
     writeCurrentRowToCsv(filterRow);
@@ -254,19 +258,19 @@ async function setFiltersAndUpdateCSV(filters) {
   }
 }
 // Function to build the filter row with indices
-async function buildFilterRow(filters) {
+async function buildFilterRow(filters_search) {
   try {
     console.log("Building filter row with indices...");
     
     // Find indices for each enabled filter
-    const makeIndex = await findDropdownIndex("#make_dropdown", filters.make);
-    const yearIndex = await findDropdownIndex("#year", filters.year);
-    const modelIndex = await findDropdownIndex("#models_dropdown", filters.model);
-    const relatedColorsIndex = await findDropdownIndex("#related_colors_dropdown", filters.related_colors);
-    const colorFamilyIndex = await findDropdownIndex("#color_family_dropdown", filters.color_family);
-    const solidEffectIndex = await findDropdownIndex("#solid_effect_dropdown", filters.solid_effect);
+    const makeIndex = await findDropdownIndex("#make_dropdown", filters_search.make);
+    const yearIndex = await findDropdownIndex("#year", filters_search.year);
+    const modelIndex = await findDropdownIndex("#models_dropdown", filters_search.model);
+    const relatedColorsIndex = await findDropdownIndex("#related_colors_dropdown", filters_search.related_colors);
+    const colorFamilyIndex = await findDropdownIndex("#color_family_dropdown", filters_search.color_family);
+    const solidEffectIndex = await findDropdownIndex("#solid_effect_dropdown", filters_search.solid_effect);
     // Construct CSV row
-    const csvRow = `${makeIndex},${filters.make || ""},${yearIndex},${filters.year || ""},${modelIndex},${filters.model || ""},${relatedColorsIndex},${filters.plastic_parts || ""},${colorFamilyIndex},${filters.groupdesc || ""},${solidEffectIndex},${filters.effect || ""}`;
+    const csvRow = `${makeIndex},${filters_search.make || ""},${yearIndex},${filters_search.year || ""},${modelIndex},${filters_search.model || ""},${relatedColorsIndex},${filters_search.plastic_parts || ""},${colorFamilyIndex},${filters_search.groupdesc || ""},${solidEffectIndex},${filters_search.effect || ""}`;
     
     console.log("✓ Filter row built:", csvRow);
     return csvRow;
@@ -276,107 +280,103 @@ async function buildFilterRow(filters) {
     throw error;
   }
 }
-async function findDropdownIndex_del(selector, text) {
-  try {
-    console.log(`Looking for option "${text}" in dropdown ${selector}`);
-    
-    await page.waitForSelector(selector, { timeout: 10000 });
-    
-    // Use destructuring in the function parameters directly
-    const result = await page.evaluate(({ selector, searchText }) => {
-      const dropdown = document.querySelector(selector);
-      if (!dropdown) {
-        return { error: `Dropdown with selector ${selector} not found` };
-      }
-      
-      const options = dropdown.options;
-      const availableOptions = [];
-      
-      console.log(`Available options in ${selector}:`);
-      for (let i = 0; i < options.length; i++) {
-        availableOptions.push({
-          index: i,
-          text: options[i].text.trim(),
-          value: options[i].value
-        });
-        console.log(`  [${i}] "${options[i].text.trim()}" (value: ${options[i].value})`);
-      }
-      
-      // Normalize search text
-      const normalizedSearchText = searchText.trim().toLowerCase();
-      
-      // Strategy 1: Exact match (case insensitive)
-      for (let i = 0; i < options.length; i++) {
-        if (options[i].text.trim().toLowerCase() === normalizedSearchText) {
-          return { index: i, matchType: 'exact', matchedText: options[i].text.trim() };
-        }
-      }
-      
-      // Strategy 2: Contains match
-      for (let i = 0; i < options.length; i++) {
-        if (options[i].text.trim().toLowerCase().includes(normalizedSearchText)) {
-          return { index: i, matchType: 'contains', matchedText: options[i].text.trim() };
-        }
-      }
-      
-      // Strategy 3: Value match
-      for (let i = 0; i < options.length; i++) {
-        if (options[i].value.trim().toLowerCase() === normalizedSearchText) {
-          return { index: i, matchType: 'value', matchedText: options[i].text.trim() };
-        }
-      }
-      
-      // Strategy 4: Fuzzy match (if no other matches found)
-      for (let i = 0; i < options.length; i++) {
-        const optionText = options[i].text.trim().toLowerCase();
-        if (optionText.includes(normalizedSearchText) || 
-            normalizedSearchText.includes(optionText)) {
-          return { index: i, matchType: 'fuzzy', matchedText: options[i].text.trim() };
-        }
-      }
-      
-      return { 
-        error: `Option "${searchText}" not found in dropdown ${selector}`,
-        availableOptions: availableOptions
-      };
-      
-    }, { selector, searchText: text }); // Pass parameters with correct names
 
-    if (result.error) {
-      console.error(`Dropdown ${selector} options:`, result.availableOptions);
-      throw new Error(result.error);
+async function uploadSingle(row_values_obj) {
+    let image_path = row_values_obj.image_path;
+    const form = new FormData();
+    const stream = fs.createReadStream(image_path);
+    console.log("uploadSingle file", image_path);
+    console.log("uploadSingle row_values_obj", row_values_obj);
+
+    if (!fs.existsSync(image_path)) {
+        console.error("File does not exist:", image_path);
+        return { success: false, error: "File does not exist", imageSrc: null };
+    }
+    if (!fs.statSync(image_path).isFile()) {
+        console.error("Not a valid file:", image_path);
+        return { success: false, error: "Not a valid file", imageSrc: null };
     }
 
-    console.log(`✓ Found option "${text}" at index ${result.index} (${result.matchType} match) - "${result.matchedText}"`);
-    return result.index;
-
-  } catch (error) {
-    console.error(`❌ Error finding dropdown index for "${text}" in ${selector}:`, error.message);
+    stream.on("error", (err) => console.error("Stream error:", err));
     
-    // Debugging code remains the same...
+    form.append("brand", row_values_obj.make);
+    form.append("models", row_values_obj.model);
+    form.append("year", row_values_obj.year);
+    form.append("color_name", row_values_obj.color);
+    form.append("paint_codes", row_values_obj.colorCode);
+    form.append("price", 9.95);
+    form.append("compare_price", 0.00);
+    
+    // ✅ CORRECT: This is the right way to append the file
+    form.append("images[]", fs.createReadStream(image_path));
+
     try {
-      const availableOptions = await page.evaluate((selector) => {
-        const dropdown = document.querySelector(selector);
-        if (!dropdown) return 'Dropdown not found';
-        
-        const options = [];
-        for (let i = 0; i < dropdown.options.length; i++) {
-          options.push({
-            index: i,
-            text: dropdown.options[i].text.trim(),
-            value: dropdown.options[i].value
-          });
+        console.log("Uploading single file:", image_path); // Fixed variable name
+        const res = await axios.post(API_URL, form, {
+            headers: {
+                ...form.getHeaders(),
+                "Accept": "*/*",
+                "Origin": "https://development.hatinco.com",
+                "Referer": "https://development.hatinco.com/scratchrepaircar/upload_brand.php",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+            },
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+            timeout: 60000,
+        });
+
+        console.log("Response data step 15:", JSON.stringify(res.data, null, 2));
+        console.log("Single upload response:", res.status, res.statusText);
+
+        let parsedFiles = null;
+        if (res.data && res.data.files) {
+            try {
+                parsedFiles =
+                    typeof res.data.files === "string"
+                        ? JSON.parse(res.data.files)
+                        : res.data.files;
+            } catch (e) {
+                console.error("Failed to parse files JSON:", e.message);
+            }
         }
-        return options;
-      }, selector);
-      
-      console.log(`Available options in ${selector}:`, availableOptions);
-    } catch (debugError) {
-      console.error('Could not retrieve available options for debugging:', debugError);
+
+        console.log("Parsed files:", JSON.stringify(parsedFiles, null, 2));
+        if (res.data.errors && res.data.errors.length > 0) {
+            console.warn("Server returned errors:", res.data.errors);
+        }
+
+        await sleep(2000);
+
+        // Extract image src
+        const src = parsedFiles?.[0]?.upload?.response?.image?.src || null;
+
+        if (!src) {
+            logFailure(image_path, `server reported failure: ${JSON.stringify(res.data).slice(0, 200)}`);
+            return { success: false, error: "Upload failed - no image source returned", imageSrc: null };
+        } else {
+            console.log("Single upload successful:", image_path, "->", src);
+            return { success: true, imageSrc: src, error: null };
+        }
+    } catch (err) {
+        console.error("Single upload error for", image_path, err && err.message);
+        if (err && err.response) {
+            console.error("Response status:", err.response.status);
+            try {
+                console.error("Response data (truncated):", JSON.stringify(err.response.data).slice(0, 1500));
+            } catch (e) {
+                console.error("Response data:", String(err.response.data).slice(0, 1500));
+            }
+        }
+        logFailure(image_path, err && err.message ? err.message : "unknown error");
+
+        await sleep(2000);
+        return { success: false, error: err.message, imageSrc: null };
+    } finally {
+        try { stream.destroy(); } catch (e) { }
     }
-    
-    throw error;
-  }
+}
+function sleep(ms) {
+    return new Promise((res) => setTimeout(res, ms));
 }
 async function findDropdownIndex(selector, text) {
   try {
@@ -501,6 +501,7 @@ async function scrapFormaulaDetailsData(container) {
   await new_page.waitForTimeout(randomWaitTime);
   await new_page.waitForSelector(".container.mt-4");
   let color_paths = await downloadSearchFamilyCanvasImage(sid, id, new_page);
+  console.log('multiple colors : ', color_paths);
   let colorCode = parsePaintInfo(container.content).code;
   // let colorCode = parsePaintInfo(item.content).code;
   const data = await new_page.evaluate(
@@ -598,11 +599,9 @@ async function downloadSearchFamilyCanvasImage(sid, id, canvas_page) {
     let color_path = await getColorPath();
 
     let imagePath = path.join(color_path, uniq_name);
-    // let imagePath = path.join('paint/colors', `${random_number}_${id}_${sid}_${index}.png`);
     images_arr.push(imagePath);
     fs.writeFileSync(imagePath, base64Data, "base64", (err) => {
       if (err) console.error(`Error saving image ${index}:`, err);
-      // else console.log(`Image ${index} saved successfully!`);
     });
   }
   return images_arr;
@@ -756,6 +755,7 @@ async function setSearchFilters(selected_page, description = null) {
         }
       }
       if (filters.description != null) {
+          console.log("in filter description:");
         await selected_page.fill("#description", filters.description);
       }
 
@@ -1117,11 +1117,11 @@ async function get_model_drop_down(selected_page = null, filters) {
       options.map((o) => o.textContent.trim())
     );
     await selected_page.waitForTimeout(randomWaitTime);
-    console.log("models selection : ", filters.model);
-    console.log("all models selection : ", models);
+    // console.log("models selection : ", filters.model);
+    // console.log("all models selection : ", models);
 
     let model_drop_down_text = filters.model_text ?? models[filters.model];
-    console.log("model_drop_down_text : ", model_drop_down_text);
+    // console.log("model_drop_down_text : ", model_drop_down_text);
     if (model_drop_down_text) {
       // await selected_page.selectOption("#models_dropdown", {
       //   label: model_drop_down_text,
@@ -1140,7 +1140,7 @@ async function get_model_drop_down(selected_page = null, filters) {
 
     // await selected_page.selectOption('#models_dropdown', { index: filters.model });
   }
-  console.log(models);
+  // console.log(models);
   _models_drop_down = models;
   return models;
 }
@@ -1453,7 +1453,7 @@ async function loadFromPage(res) {
       related_colors_drop_down_index = 0;
       model_drop_down_index++;
     }
-    console.log("model_drop_down:", _models_drop_down);
+    // console.log("model_drop_down:", _models_drop_down);
     if (
       model_drop_down_index >= _models_drop_down.length - 1 &&
       filter_completed
@@ -1818,7 +1818,7 @@ async function scrapDataFromPages() {
             data_arr
           );
           console.log("extracted_data here :", extracted_data);
-          await saveToExcel([extracted_data], "paint/sheets/paint.csv");
+          await saveToExcel(extracted_data, "paint/sheets/paint.csv");
         }
         console.log("Saved container data:", container.description);
       }
@@ -1904,7 +1904,7 @@ async function scrapDataFromPages() {
               );
               // await fs.promises.writeFile(multitoneFile, stateData);
 
-              await saveToExcel([extracted_data], "paint/sheets/paint.csv");
+              await saveToExcel(extracted_data, "paint/sheets/paint.csv");
             }
           }
 
@@ -1982,6 +1982,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
         infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
         detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
         console.log("detailColorUrl:", detailColorUrl);
+        console.log("multiple colors data_arr:", data_arr);
 
         // await scrapColorInfoData(id);
         // infoColorUrl = 'https://generalpaint.info/v2/search/formula-info?id=107573';
@@ -1994,7 +1995,8 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
     console.error("Error scrapDataFromList:", error);
     console.error("url :", detailColorUrl);
   } finally {
-    return combinedData;
+    // return combinedData;
+    return data_arr;
   }
 }
 const escapeCsvValue = (value) => {
@@ -2024,11 +2026,36 @@ async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
   const makeDropdown = await get_make_drop_down();
   const filePath = "paint/sheets/";
   fs.mkdirSync(path.join("paint", "sheets"), { recursive: true });
-  // fileName = path.join(filePath, `${makeDropdown[filters_obj.make]}.csv`);
   fileName = outputFilePath;
   console.log("excel 4");
 
-  const cleanedDataArray = dataArray.map((row) => {
+  // Process each row to upload images and get updated image paths
+  const processedDataArray = [];
+  
+  for (const row of dataArray) {
+    let updatedRow = { ...row };
+    
+    // If there's an image path and it's a local file, upload it
+    if (row.image_path && fs.existsSync(row.image_path)) {
+      console.log(`Uploading image: ${row.image_path}`);
+      
+      const uploadResult = await uploadSingle(row);
+      
+      if (uploadResult.success && uploadResult.imageSrc) {
+        // Update the image_path with the uploaded image URL
+        updatedRow.image_path = uploadResult.imageSrc;
+        console.log(`✓ Image uploaded successfully: ${uploadResult.imageSrc}`);
+      } else {
+        console.error(`❌ Failed to upload image: ${row.image_path}`, uploadResult.error);
+        // Keep the original image_path if upload fails, or set to empty
+        // updatedRow.image_path = ''; // Uncomment if you want to clear failed uploads
+      }
+    }
+    
+    processedDataArray.push(updatedRow);
+  }
+
+  const cleanedDataArray = processedDataArray.map((row) => {
     const cleanedRow = {};
     for (const key in row) {
       if (row.hasOwnProperty(key)) {
@@ -2048,11 +2075,20 @@ async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
 
   if (fs.existsSync(fileName)) {
     fs.appendFileSync(fileName, `\n${csvData}`);
+    write_response.write(`data: ${JSON.stringify({
+      type: 'new_rows',
+      rows: processedDataArray
+    })}\n\n`);
+    // write_response.write(`data:{row: ${csvData}}\n\n`);
   } else {
     const header = Object.keys(cleanedDataArray[0]).join(",");
-    fs.writeFileSync(fileName, `${header}\n${csvData}`);
+    // fs.writeFileSync(fileName, `${header}\n${csvData}`);
   }
+  
+  console.log(`✓ CSV saved with ${processedDataArray.length} rows (including uploaded images)`);
 }
+
+
 
 app.get("/general_paint", async (req, res) => {
   try {
@@ -2060,6 +2096,7 @@ app.get("/general_paint", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
+    write_response = res;
     console.time("Execution Time");
     req.on("close", () => {
       console.log("Client disconnected.");
@@ -2075,7 +2112,7 @@ app.get("/general_paint", async (req, res) => {
 
     res.write(`data: [DONE]\n\n`);
     console.timeEnd("Execution Time");
-    // res.end();
+    res.end();
   } catch (error) {
     console.error(`Error in /general_paint route: ${error.message}`);
     res.write(`data: [ERROR]\n\n`);
