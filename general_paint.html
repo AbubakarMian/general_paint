@@ -101,6 +101,18 @@
             border: 1px solid #ddd;
             border-radius: 4px;
         }
+
+        /* Year validation styles */
+        .year-validation {
+            font-size: 0.875rem;
+            margin-top: 5px;
+            display: none;
+        }
+        .year-examples {
+            font-size: 0.875rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
     </style>
 </head>
 
@@ -163,7 +175,7 @@
                                    style="" value="E:\python\node_apps\general_paint\paint\sheets\renault_search2.csv"
                                    placeholder="Enter custom file path (e.g., paint/sheets/my_data.csv)">
                             <div class="form-text">
-                                Select a predefined file path or choose "Enter custom path" to specify your own
+                                Select a predefined file path
                             </div>
                         </div>
                     </div>
@@ -186,8 +198,8 @@
                                     <strong>Make</strong>
                                 </label>
                             </div>
-                            <input type="text" id="make" name="make" class="form-control filter-input mt-2" 
-                                   style="display: none;" value="RENAULT" placeholder="Enter vehicle make">
+                            <input type="text" id="make" name="make"  class="form-control filter-input mt-2" 
+                                   style="display: none1;" value="RENAULT" placeholder="Enter vehicle make">
                         </div>
                         
                         <div class="col-md-6 mb-3">
@@ -197,8 +209,14 @@
                                     <strong>Year</strong>
                                 </label>
                             </div>
-                            <input type="text" id="year" name="year" value="2024" class="form-control filter-input mt-2" 
-                                   style="display: none;" placeholder="Enter year">
+                            <div class="year-input-container">
+                                <input type="text" id="year" name="year" value="2024-2026" class="form-control filter-input mt-2" 
+                                       style="display: none1;" placeholder="Enter year (e.g., 2025 or 2025-2020)">
+                                <div class="year-validation" id="yearValidation"></div>
+                                <div class="year-examples">
+                                    Examples: 2024 (single year) or 2020-2024 (year range)
+                                </div>
+                            </div>
                         </div>
                         
                         <div class="col-md-6 mb-3">
@@ -209,7 +227,7 @@
                                 </label>
                             </div>
                             <input type="text" id="model" name="model" class="form-control filter-input mt-2" 
-                                   style="display: none;" value="CLIO" placeholder="Enter vehicle model">
+                                   style="display: none1;" value="ALPINE,CLIO" placeholder="Enter vehicle model">
                         </div>
                         
                         <!-- <div class="col-md-6 mb-3">
@@ -350,6 +368,8 @@
     <script src="js/bootstrap.bundle.min.js"></script>
     <script src="js/jquery-3.6.0.min.js"></script>
     <script src="js/app_browser.js"></script>
+    <script>
+    
+    </script>
 </body>
-
 </html>

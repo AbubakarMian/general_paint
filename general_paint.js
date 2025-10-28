@@ -18,12 +18,14 @@ let multitone_page = null;
 let filters_obj = {};
 let interceptedRequests = [];
 let _models_drop_down = [];
-let outputFilePath=null;
+let outputFilePath = null;
 const xlsx = require("xlsx");
 const { createCanvas } = require("canvas");
 let current_filter_csv = "paint/current_filter_csv.csv";
+let search_filter_param_csv = "paint/search_filter_param_csv.csv";
 let all_completed_filter_csv = "paint/all_completed_filter_csv.csv";
-const API_URL = "https://development.hatinco.com/scratchrepaircar/upload_shopify.php";
+const API_URL =
+  "https://development.hatinco.com/scratchrepaircar/upload_shopify.php";
 
 const MAX_RECURSION_DEPTH = 15;
 const MAX_VISITED_ENTRIES = 1500000;
@@ -34,7 +36,7 @@ let write_response = null;
 async function loadUrl(retries = 1000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      if (!browser){
+      if (!browser) {
         browser = await chromium.launch({
           headless: false,
           args: [
@@ -53,7 +55,7 @@ async function loadUrl(retries = 1000) {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         });
       }
-      
+
       await page.goto("https://generalpaint.info/v2/site/login", {
         timeout: 90000,
       });
@@ -71,7 +73,7 @@ async function loadUrl(retries = 1000) {
       await multitone_page.goto("https://generalpaint.info/v2/site/login");
       return true;
     } catch (err) {
-      if (browser&& attempt%5 === 0) {
+      if (browser && attempt % 5 === 0) {
         try {
           await browser.close();
         } catch (closeErr) {
@@ -115,7 +117,7 @@ async function loginPage(page) {
       await Promise.all([
         page.waitForSelector(usernameSelector, { visible: true }),
         page.waitForSelector(passwordSelector, { visible: true }),
-        page.waitForSelector(submitSelector, { visible: true })
+        page.waitForSelector(submitSelector, { visible: true }),
       ]);
     }
 
@@ -127,13 +129,6 @@ async function loginPage(page) {
     console.log("Not logged in - proceeding with login");
   }
 
-  // If we're not on login page, go there
-  // if (!page.url().includes('/site/login')) {
-  //     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
-  // }
-
-  // Perform login
-
   try {
     await page.waitForSelector(usernameSelector, { timeout: 10000 });
     await page.fill(usernameSelector, "johnnybrownlee87");
@@ -141,7 +136,6 @@ async function loginPage(page) {
     await page.waitForSelector(passwordSelector, { timeout: 10000 });
     await page.fill(passwordSelector, "7s1xpcnjqQ");
 
-    // Click submit and wait for navigation
     page.click(submitSelector);
     await Promise.all([
       page.waitForNavigation({ waitUntil: "networkidle", timeout: 15000 }),
@@ -165,6 +159,14 @@ async function loginPage(page) {
 function getRandomNumber(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+function safeSplit(str, delimiter = ",") {
+  if (!str) return [];
+  return str
+    .split(delimiter)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .sort();
+}
 
 app.get("/loadurl", async (req, res) => {
   try {
@@ -175,20 +177,76 @@ app.get("/loadurl", async (req, res) => {
     write_response = res;
     console.log(`step 1 `);
     res.write(`data: [loggingIn]\n\n`);
-console.log(req.query);
+    console.log(req.query);
+
     // Extract filter parameters
     outputFilePath = req.query.outputFilePath;
+
+    // Process year parameter for ranges
+    let year = req.query.year || null;
+    let end_year = null;
+    let allowed_years = [];
+    let allowed_makes = safeSplit(req.query.make);
+    let allowed_models = safeSplit(req.query.model);
+
+    // Check if year is a range (e.g., "2024-2027" or "2027-2024")
+    if (year && typeof year === "string" && year.includes("-")) {
+      const years = year
+        .split("-")
+        .map((y) => parseInt(y.trim()))
+        .filter((y) => !isNaN(y));
+
+      if (years.length === 2) {
+        year = Math.max(years[0], years[1]);
+        end_year = Math.min(years[0], years[1]);
+        for (let index_year = year; index_year >= end_year; index_year--) {
+          allowed_years.push(index_year);
+        }
+        console.log(
+          `Year range detected: ${years[0]}-${years[1]}, using year: ${year}, end_year: ${end_year}`
+        );
+      }
+    } else if (year) {
+      year = parseInt(year);
+      end_year = year;
+      allowed_years = [year];
+    }
+
     const filters_search = {
       outputFilePath: req.query.outputFilePath || null,
-      make: req.query.make || null,
-      year: req.query.year || 0,
-      model: req.query.model || null,
+      make: allowed_makes.length > 0 ? allowed_makes[0] : null, // Use the processed array
+      year: year,
+      end_year: end_year,
+      allowed_years: allowed_years,
+      allowed_makes: allowed_makes,
+      allowed_models: allowed_models,
+      model: allowed_models.length > 0 ? allowed_models[0] : null, // Use the processed array
       plastic_parts: req.query.related_colors || 0,
       groupdesc: req.query.color_family || 0,
-      effect: req.query.solid_effect || 0
+      effect: req.query.solid_effect || 0,
     };
-    console.log('outputFilePath',req.query.outputFilePath);
-    console.log('all query',req.query);
+
+    const current_search = {
+      // outputFilePath: req.query.outputFilePath || null,
+      make: allowed_makes.length > 0 ? allowed_makes[0] : null, // Use the processed array
+      year: year,
+      // allowed_years: allowed_years,
+      // allowed_makes: allowed_makes,
+      // allowed_models: allowed_models,
+      model: allowed_models.length > 0 ? allowed_models[0] : null, // Use the processed array
+      plastic_parts: req.query.related_colors || 0,
+      groupdesc: req.query.color_family || 0,
+      effect: req.query.solid_effect || 0,
+      end_year: end_year,
+    };
+    console.log("outputFilePath", req.query.outputFilePath);
+    console.log("all query", req.query);
+    console.log("processed year filters:", {
+      year: filters_search.year,
+      end_year: filters_search.end_year,
+    });
+    console.log("processed makes:", allowed_makes);
+    console.log("processed models:", allowed_models);
 
     // Validate required fields
     if (!filters_search.outputFilePath) {
@@ -196,25 +254,32 @@ console.log(req.query);
       res.end();
       return;
     }
-    let logged_in = await loadUrl();
-    // Set filters and create/update CSV
-    
-    
-      
-      if (logged_in) {
-        res.write(`data: [StartingsetFiltersAndUpdateCSVsuccess]\n\n`);
-        const filterSetSuccess = await setFiltersAndUpdateCSV(filters_search);
-        res.write(`data: [loadurlSuccess]\n\n`);
 
+    let logged_in = await loadUrl();
+
+    // Set filters and create/update CSV
+    if (logged_in) {
+      res.write(`data: [StartingsetFiltersAndUpdateCSVsuccess]\n\n`);
+      const currentfilterSetSuccess = await setFiltersAndUpdateCSV(
+        current_search
+      );
+      res.write(`data: [loadurlSuccess]\n\n`);
+      const filterSetSuccess = await writeCurrentSearchFiltersParametersToCsv(
+        filters_search
+      );
+      if (!currentfilterSetSuccess) {
+        res.write(
+          `data: [ERROR: Failed to currentfilterSetSuccess filters]\n\n`
+        );
+      }
       if (!filterSetSuccess) {
         res.write(`data: [ERROR: Failed to set filters]\n\n`);
       }
-        return;
-      } else {
-        res.write(`data: [ERRORURLNOTLOADED]\n\n`);
-        res.end();
-      }
-    
+      return;
+    } else {
+      res.write(`data: [ERRORURLNOTLOADED]\n\n`);
+      res.end();
+    }
   } catch (error) {
     console.error(`Error in /loadurl route: ${error.message}`);
     res.write(`data: [ERROR]\n\n`);
@@ -225,33 +290,33 @@ console.log(req.query);
 async function setFiltersAndUpdateCSV(filters_search) {
   try {
     // filters_obj = filters_search;
-      let randomWaitTime = getRandomNumber(5000, 6500);
+    let randomWaitTime = getRandomNumber(5000, 6500);
 
-    // await setSearchFilters(page);
-    await page.selectOption("#make_dropdown", {
-      label: filters_search.make,
-    });
+    if (filters_search.make) {
+      await page.selectOption("#make_dropdown", {
+        label: filters_search.make,
+      });
+    }
     await page.waitForTimeout(randomWaitTime);
-    await page.selectOption("#year", { label: filters_search.year });
+    if (filters_search.year) {
+      await page.selectOption("#year", {
+        label: filters_search.year.toString(),
+      });
+    }
     await page.waitForTimeout(randomWaitTime);
+    if (filters_search.model) {
+      await page.evaluate((model) => {
+        $("#models_dropdown").selectpicker("val", model);
+      }, filters_search.model);
+    }
+    console.log("Setting filters and updating CSV...", filters_search);
 
-    await page.evaluate((model) => {
-      // Use Bootstrap Select's API to select the option
-      $('#models_dropdown').selectpicker('val', model);
-      // Or if you need to select by visible text:
-      // $('#models_dropdown').selectpicker('val', model);
-    }, filters_search.model);
-    console.log("Setting filters and updating CSV...",filters_search);
-    
-    // Build the filter row with indices
     const filterRow = await buildFilterRow(filters_search);
-    
-    // Write to CSV
+
     writeCurrentRowToCsv(filterRow);
-    
+
     console.log("✓ Filters set and CSV updated successfully");
     return true;
-    
   } catch (error) {
     console.error("❌ Error setting filters:", error);
     return false;
@@ -261,20 +326,39 @@ async function setFiltersAndUpdateCSV(filters_search) {
 async function buildFilterRow(filters_search) {
   try {
     console.log("Building filter row with indices...");
-    
+
     // Find indices for each enabled filter
-    const makeIndex = await findDropdownIndex("#make_dropdown", filters_search.make);
+    const makeIndex = await findDropdownIndex(
+      "#make_dropdown",
+      filters_search.make
+    );
     const yearIndex = await findDropdownIndex("#year", filters_search.year);
-    const modelIndex = await findDropdownIndex("#models_dropdown", filters_search.model);
-    const relatedColorsIndex = await findDropdownIndex("#related_colors_dropdown", filters_search.related_colors);
-    const colorFamilyIndex = await findDropdownIndex("#color_family_dropdown", filters_search.color_family);
-    const solidEffectIndex = await findDropdownIndex("#solid_effect_dropdown", filters_search.solid_effect);
-    // Construct CSV row
-    const csvRow = `${makeIndex},${filters_search.make || ""},${yearIndex},${filters_search.year || ""},${modelIndex},${filters_search.model || ""},${relatedColorsIndex},${filters_search.plastic_parts || ""},${colorFamilyIndex},${filters_search.groupdesc || ""},${solidEffectIndex},${filters_search.effect || ""}`;
-    
+    const modelIndex = await findDropdownIndex(
+      "#models_dropdown",
+      filters_search.model
+    );
+    const relatedColorsIndex = await findDropdownIndex(
+      "#related_colors_dropdown",
+      filters_search.related_colors
+    );
+    const colorFamilyIndex = await findDropdownIndex(
+      "#color_family_dropdown",
+      filters_search.color_family
+    );
+    const solidEffectIndex = await findDropdownIndex(
+      "#solid_effect_dropdown",
+      filters_search.solid_effect
+    );
+    const csvRow = `${makeIndex},${filters_search.make || ""},${yearIndex},${
+      filters_search.year || ""
+    },${modelIndex},${filters_search.model || ""},${relatedColorsIndex},${
+      filters_search.plastic_parts || ""
+    },${colorFamilyIndex},${
+      filters_search.groupdesc || ""
+    },${solidEffectIndex},${filters_search.effect || ""}`;
+
     console.log("✓ Filter row built:", csvRow);
     return csvRow;
-    
   } catch (error) {
     console.error("❌ Error building filter row:", error);
     throw error;
@@ -282,211 +366,269 @@ async function buildFilterRow(filters_search) {
 }
 
 async function uploadSingle(row_values_obj) {
-    let image_path = row_values_obj.image_path;
-    const form = new FormData();
-    const stream = fs.createReadStream(image_path);
-    console.log("uploadSingle file", image_path);
-    console.log("uploadSingle row_values_obj", row_values_obj);
+  let image_path = row_values_obj.image_path;
+  const form = new FormData();
+  const stream = fs.createReadStream(image_path);
+  console.log("uploadSingle file", image_path);
+  console.log("uploadSingle row_values_obj", row_values_obj);
 
-    if (!fs.existsSync(image_path)) {
-        console.error("File does not exist:", image_path);
-        return { success: false, error: "File does not exist", imageSrc: null };
+  if (!fs.existsSync(image_path)) {
+    console.error("File does not exist:", image_path);
+    return { success: false, error: "File does not exist", imageSrc: null };
+  }
+  if (!fs.statSync(image_path).isFile()) {
+    console.error("Not a valid file:", image_path);
+    return { success: false, error: "Not a valid file", imageSrc: null };
+  }
+
+  stream.on("error", (err) => console.error("Stream error:", err));
+
+  form.append("brand", row_values_obj.make);
+  form.append("models", row_values_obj.model);
+  form.append("year", row_values_obj.year);
+  form.append("color_name", row_values_obj.color);
+  form.append("paint_codes", row_values_obj.colorCode);
+  form.append("price", 9.95);
+  form.append("compare_price", 0.0);
+
+  // ✅ CORRECT: This is the right way to append the file
+  form.append("images[]", fs.createReadStream(image_path));
+
+  try {
+    console.log("Uploading single file:", image_path); // Fixed variable name
+    const res = await axios.post(API_URL, form, {
+      headers: {
+        ...form.getHeaders(),
+        Accept: "*/*",
+        Origin: "https://development.hatinco.com",
+        Referer:
+          "https://development.hatinco.com/scratchrepaircar/upload_brand.php",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+      },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      timeout: 60000,
+    });
+
+    console.log("Response data step 15:", JSON.stringify(res.data, null, 2));
+    console.log("Single upload response:", res.status, res.statusText);
+
+    let parsedFiles = null;
+    if (res.data && res.data.files) {
+      try {
+        parsedFiles =
+          typeof res.data.files === "string"
+            ? JSON.parse(res.data.files)
+            : res.data.files;
+      } catch (e) {
+        console.error("Failed to parse files JSON:", e.message);
+      }
     }
-    if (!fs.statSync(image_path).isFile()) {
-        console.error("Not a valid file:", image_path);
-        return { success: false, error: "Not a valid file", imageSrc: null };
+
+    console.log("Parsed files:", JSON.stringify(parsedFiles, null, 2));
+    if (res.data.errors && res.data.errors.length > 0) {
+      console.warn("Server returned errors:", res.data.errors);
     }
 
-    stream.on("error", (err) => console.error("Stream error:", err));
-    
-    form.append("brand", row_values_obj.make);
-    form.append("models", row_values_obj.model);
-    form.append("year", row_values_obj.year);
-    form.append("color_name", row_values_obj.color);
-    form.append("paint_codes", row_values_obj.colorCode);
-    form.append("price", 9.95);
-    form.append("compare_price", 0.00);
-    
-    // ✅ CORRECT: This is the right way to append the file
-    form.append("images[]", fs.createReadStream(image_path));
+    await sleep(2000);
 
+    // Extract image src
+    const src = parsedFiles?.[0]?.upload?.response?.image?.src || null;
+
+    if (!src) {
+      logFailure(
+        image_path,
+        `server reported failure: ${JSON.stringify(res.data).slice(0, 200)}`
+      );
+      return {
+        success: false,
+        error: "Upload failed - no image source returned",
+        imageSrc: null,
+      };
+    } else {
+      console.log("Single upload successful:", image_path, "->", src);
+      return { success: true, imageSrc: src, error: null };
+    }
+  } catch (err) {
+    console.error("Single upload error for", image_path, err && err.message);
+    if (err && err.response) {
+      console.error("Response status:", err.response.status);
+      try {
+        console.error(
+          "Response data (truncated):",
+          JSON.stringify(err.response.data).slice(0, 1500)
+        );
+      } catch (e) {
+        console.error(
+          "Response data:",
+          String(err.response.data).slice(0, 1500)
+        );
+      }
+    }
+    logFailure(image_path, err && err.message ? err.message : "unknown error");
+
+    await sleep(2000);
+    return { success: false, error: err.message, imageSrc: null };
+  } finally {
     try {
-        console.log("Uploading single file:", image_path); // Fixed variable name
-        const res = await axios.post(API_URL, form, {
-            headers: {
-                ...form.getHeaders(),
-                "Accept": "*/*",
-                "Origin": "https://development.hatinco.com",
-                "Referer": "https://development.hatinco.com/scratchrepaircar/upload_brand.php",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-            },
-            maxBodyLength: Infinity,
-            maxContentLength: Infinity,
-            timeout: 60000,
-        });
-
-        console.log("Response data step 15:", JSON.stringify(res.data, null, 2));
-        console.log("Single upload response:", res.status, res.statusText);
-
-        let parsedFiles = null;
-        if (res.data && res.data.files) {
-            try {
-                parsedFiles =
-                    typeof res.data.files === "string"
-                        ? JSON.parse(res.data.files)
-                        : res.data.files;
-            } catch (e) {
-                console.error("Failed to parse files JSON:", e.message);
-            }
-        }
-
-        console.log("Parsed files:", JSON.stringify(parsedFiles, null, 2));
-        if (res.data.errors && res.data.errors.length > 0) {
-            console.warn("Server returned errors:", res.data.errors);
-        }
-
-        await sleep(2000);
-
-        // Extract image src
-        const src = parsedFiles?.[0]?.upload?.response?.image?.src || null;
-
-        if (!src) {
-            logFailure(image_path, `server reported failure: ${JSON.stringify(res.data).slice(0, 200)}`);
-            return { success: false, error: "Upload failed - no image source returned", imageSrc: null };
-        } else {
-            console.log("Single upload successful:", image_path, "->", src);
-            return { success: true, imageSrc: src, error: null };
-        }
-    } catch (err) {
-        console.error("Single upload error for", image_path, err && err.message);
-        if (err && err.response) {
-            console.error("Response status:", err.response.status);
-            try {
-                console.error("Response data (truncated):", JSON.stringify(err.response.data).slice(0, 1500));
-            } catch (e) {
-                console.error("Response data:", String(err.response.data).slice(0, 1500));
-            }
-        }
-        logFailure(image_path, err && err.message ? err.message : "unknown error");
-
-        await sleep(2000);
-        return { success: false, error: err.message, imageSrc: null };
-    } finally {
-        try { stream.destroy(); } catch (e) { }
-    }
+      stream.destroy();
+    } catch (e) {}
+  }
 }
 function sleep(ms) {
-    return new Promise((res) => setTimeout(res, ms));
+  return new Promise((res) => setTimeout(res, ms));
 }
 async function findDropdownIndex(selector, text) {
   try {
+    text = String(text || "");
     // Return index 0 for empty/missing text
-    if (!text || text.trim() === '') {
+    if (!text || text.trim() === "") {
       console.log(`No text provided for ${selector}, returning index 0`);
       return 0;
     }
 
     console.log(`Looking for option "${text}" in dropdown ${selector}`);
-    
+
     await page.waitForSelector(selector, { timeout: 10000 });
-    
-    const result = await page.evaluate(({ selector, searchText }) => {
-      const dropdown = document.querySelector(selector);
-      if (!dropdown) {
-        return { error: `Dropdown with selector ${selector} not found` };
-      }
-      
-      const options = dropdown.options;
-      const availableOptions = [];
-      
-      console.log(`Available options in ${selector}:`);
-      for (let i = 0; i < options.length; i++) {
-        availableOptions.push({
-          index: i,
-          text: options[i].text.trim(),
-          value: options[i].value
-        });
-        console.log(`  [${i}] "${options[i].text.trim()}" (value: ${options[i].value})`);
-      }
-      
-      // If no options or only empty option, return 0
-      if (options.length === 0 || (options.length === 1 && options[0].text.trim() === '')) {
-        return { index: 0, matchType: 'default', matchedText: '' };
-      }
-      
-      // Normalize search text
-      const normalizedSearchText = searchText.trim().toLowerCase();
-      
-      // Strategy 1: Exact match (case insensitive)
-      for (let i = 0; i < options.length; i++) {
-        if (options[i].text.trim().toLowerCase() === normalizedSearchText) {
-          return { index: i, matchType: 'exact', matchedText: options[i].text.trim() };
+
+    const result = await page.evaluate(
+      ({ selector, searchText }) => {
+        const dropdown = document.querySelector(selector);
+        if (!dropdown) {
+          return { error: `Dropdown with selector ${selector} not found` };
         }
-      }
-      
-      // Strategy 2: Contains match
-      for (let i = 0; i < options.length; i++) {
-        if (options[i].text.trim().toLowerCase().includes(normalizedSearchText)) {
-          return { index: i, matchType: 'contains', matchedText: options[i].text.trim() };
+
+        const options = dropdown.options;
+        const availableOptions = [];
+
+        console.log(`Available options in ${selector}:`);
+        for (let i = 0; i < options.length; i++) {
+          availableOptions.push({
+            index: i,
+            text: options[i].text.trim(),
+            value: options[i].value,
+          });
+          console.log(
+            `  [${i}] "${options[i].text.trim()}" (value: ${options[i].value})`
+          );
         }
-      }
-      
-      // Strategy 3: Value match
-      for (let i = 0; i < options.length; i++) {
-        if (options[i].value.trim().toLowerCase() === normalizedSearchText) {
-          return { index: i, matchType: 'value', matchedText: options[i].text.trim() };
+
+        // If no options or only empty option, return 0
+        if (
+          options.length === 0 ||
+          (options.length === 1 && options[0].text.trim() === "")
+        ) {
+          return { index: 0, matchType: "default", matchedText: "" };
         }
-      }
-      
-      // Strategy 4: Fuzzy match (if no other matches found)
-      for (let i = 0; i < options.length; i++) {
-        const optionText = options[i].text.trim().toLowerCase();
-        if (optionText.includes(normalizedSearchText) || 
-            normalizedSearchText.includes(optionText)) {
-          return { index: i, matchType: 'fuzzy', matchedText: options[i].text.trim() };
+
+        // Normalize search text
+        const normalizedSearchText = searchText.trim().toLowerCase();
+
+        // Strategy 1: Exact match (case insensitive)
+        for (let i = 0; i < options.length; i++) {
+          if (options[i].text.trim().toLowerCase() === normalizedSearchText) {
+            return {
+              index: i,
+              matchType: "exact",
+              matchedText: options[i].text.trim(),
+            };
+          }
         }
-      }
-      
-      // If no match found, return index 0 (default/empty option)
-      console.log(`No match found for "${searchText}", returning index 0`);
-      return { index: 0, matchType: 'default', matchedText: options[0]?.text.trim() || '' };
-      
-    }, { selector, searchText: text });
+
+        // Strategy 2: Contains match
+        for (let i = 0; i < options.length; i++) {
+          if (
+            options[i].text.trim().toLowerCase().includes(normalizedSearchText)
+          ) {
+            return {
+              index: i,
+              matchType: "contains",
+              matchedText: options[i].text.trim(),
+            };
+          }
+        }
+
+        // Strategy 3: Value match
+        for (let i = 0; i < options.length; i++) {
+          if (options[i].value.trim().toLowerCase() === normalizedSearchText) {
+            return {
+              index: i,
+              matchType: "value",
+              matchedText: options[i].text.trim(),
+            };
+          }
+        }
+
+        // Strategy 4: Fuzzy match (if no other matches found)
+        for (let i = 0; i < options.length; i++) {
+          const optionText = options[i].text.trim().toLowerCase();
+          if (
+            optionText.includes(normalizedSearchText) ||
+            normalizedSearchText.includes(optionText)
+          ) {
+            return {
+              index: i,
+              matchType: "fuzzy",
+              matchedText: options[i].text.trim(),
+            };
+          }
+        }
+
+        // If no match found, return index 0 (default/empty option)
+        console.log(`No match found for "${searchText}", returning index 0`);
+        return {
+          index: 0,
+          matchType: "default",
+          matchedText: options[0]?.text.trim() || "",
+        };
+      },
+      { selector, searchText: text }
+    );
 
     if (result.error) {
-      console.warn(`Warning for ${selector}: ${result.error}. Returning index 0`);
+      console.warn(
+        `Warning for ${selector}: ${result.error}. Returning index 0`
+      );
       return 0;
     }
 
-    console.log(`✓ Found option "${text}" at index ${result.index} (${result.matchType} match) - "${result.matchedText}"`);
+    console.log(
+      `✓ Found option "${text}" at index ${result.index} (${result.matchType} match) - "${result.matchedText}"`
+    );
     return result.index;
-
   } catch (error) {
-    console.error(`❌ Error finding dropdown index for "${text}" in ${selector}:`, error.message);
+    console.error(
+      `❌ Error finding dropdown index for "${text}" in ${selector}:`,
+      error.message
+    );
     console.warn(`Returning index 0 as fallback`);
-    
+
     // Debugging
     try {
       const availableOptions = await page.evaluate((selector) => {
         const dropdown = document.querySelector(selector);
-        if (!dropdown) return 'Dropdown not found';
-        
+        if (!dropdown) return "Dropdown not found";
+
         const options = [];
         for (let i = 0; i < dropdown.options.length; i++) {
           options.push({
             index: i,
             text: dropdown.options[i].text.trim(),
-            value: dropdown.options[i].value
+            value: dropdown.options[i].value,
           });
         }
         return options;
       }, selector);
-      
+
       console.log(`Available options in ${selector}:`, availableOptions);
     } catch (debugError) {
-      console.error('Could not retrieve available options for debugging:', debugError);
+      console.error(
+        "Could not retrieve available options for debugging:",
+        debugError
+      );
     }
-    
+
     return 0; // Return 0 instead of throwing error
   }
 }
@@ -501,7 +643,7 @@ async function scrapFormaulaDetailsData(container) {
   await new_page.waitForTimeout(randomWaitTime);
   await new_page.waitForSelector(".container.mt-4");
   let color_paths = await downloadSearchFamilyCanvasImage(sid, id, new_page);
-  console.log('multiple colors : ', color_paths);
+  console.log("multiple colors : ", color_paths);
   let colorCode = parsePaintInfo(container.content).code;
   // let colorCode = parsePaintInfo(item.content).code;
   const data = await new_page.evaluate(
@@ -684,7 +826,8 @@ async function setSearchFilters(selected_page, description = null) {
         await selected_page.selectOption("#make_dropdown", {
           index: filters.make,
         });
-        await selected_page.evaluate(() => {// ensure trigger the change event
+        await selected_page.evaluate(() => {
+          // ensure trigger the change event
           const el = document.querySelector("#make_dropdown");
           el.dispatchEvent(new Event("change", { bubbles: true }));
         });
@@ -715,7 +858,7 @@ async function setSearchFilters(selected_page, description = null) {
               }
             }
           );
-        
+
           if (check.result === false) {
             console.log("Change detected:", check);
             return false; // stop or handle it as you like
@@ -733,7 +876,7 @@ async function setSearchFilters(selected_page, description = null) {
             });
           }
         );
-      
+
         if (!check.result) {
           console.log("Change detected:", check);
           return false;
@@ -745,17 +888,19 @@ async function setSearchFilters(selected_page, description = null) {
           "#effect",
           ["#plastic_parts", "#models_dropdown", "#groupdesc"],
           async () => {
-            await selected_page.selectOption("#effect", { index: filters.effect });
+            await selected_page.selectOption("#effect", {
+              index: filters.effect,
+            });
           }
         );
-      
+
         if (!check.result) {
           console.log("Change detected:", check);
           return false;
         }
       }
       if (filters.description != null) {
-          console.log("in filter description:");
+        console.log("in filter description:");
         await selected_page.fill("#description", filters.description);
       }
 
@@ -1111,11 +1256,15 @@ async function get_make_drop_down() {
 async function get_model_drop_down(selected_page = null, filters) {
   let randomWaitTime = getRandomNumber(2500, 3500);
   await selected_page.waitForTimeout(randomWaitTime);
-  let models = [];
+  console.log("now selecting model drop down");
+  let models = await selected_page.$$eval(
+    "#models_dropdown option",
+    (options) => {
+      console.log("options model drop down : ", options);
+      return options.map((o) => o.textContent.trim());
+    }
+  );
   if (selected_page && filters.model !== null) {
-    models = await selected_page.$$eval("#models_dropdown option", (options) =>
-      options.map((o) => o.textContent.trim())
-    );
     await selected_page.waitForTimeout(randomWaitTime);
     // console.log("models selection : ", filters.model);
     // console.log("all models selection : ", models);
@@ -1131,24 +1280,32 @@ async function get_model_drop_down(selected_page = null, filters) {
       //   const el = document.querySelector("#models_dropdown");
       //   el.dispatchEvent(new Event("change", { bubbles: true }));
       // });
-      await selected_page.evaluate((text) => {// combination of above code Finds the option by its label.Sets it as selected.Triggers the change event.
+      await selected_page.evaluate((text) => {
+        // combination of above code Finds the option by its label.Sets it as selected.Triggers the change event.
         const el = document.querySelector("#models_dropdown");
-        el.value = [...el.options].find(o => o.label === text)?.value || "";
+        el.value = [...el.options].find((o) => o.label === text)?.value || "";
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }, model_drop_down_text);
     }
 
     // await selected_page.selectOption('#models_dropdown', { index: filters.model });
   }
-  // console.log(models);
+  console.log("setting models in _models_drop_down : ", models);
   _models_drop_down = models;
   return models;
 }
-async function checkDependentChange(selected_page, triggerSelector, dependentSelectors, selectCallback) {
+async function checkDependentChange(
+  selected_page,
+  triggerSelector,
+  dependentSelectors,
+  selectCallback
+) {
   // Take snapshots before change
   const before = {};
   for (const sel of dependentSelectors) {
-    before[sel] = await selected_page.$$eval(`${sel} option`, opts => opts.map(o => o.textContent.trim()));
+    before[sel] = await selected_page.$$eval(`${sel} option`, (opts) =>
+      opts.map((o) => o.textContent.trim())
+    );
   }
 
   // Execute dropdown change (your logic)
@@ -1160,7 +1317,9 @@ async function checkDependentChange(selected_page, triggerSelector, dependentSel
   // Take snapshots after change
   const after = {};
   for (const sel of dependentSelectors) {
-    after[sel] = await selected_page.$$eval(`${sel} option`, opts => opts.map(o => o.textContent.trim()));
+    after[sel] = await selected_page.$$eval(`${sel} option`, (opts) =>
+      opts.map((o) => o.textContent.trim())
+    );
   }
 
   // Compare
@@ -1170,7 +1329,7 @@ async function checkDependentChange(selected_page, triggerSelector, dependentSel
       return {
         result: false,
         changedDropdown: sel,
-        triggerDropdown: triggerSelector
+        triggerDropdown: triggerSelector,
       };
     }
   }
@@ -1338,23 +1497,52 @@ async function get_solid_effect_drop_down() {
     "Effect",
   ];
 }
-const writeCurrentRowToCsv = (row) => {
+const writeCurrentRowToCsv = async (row) => {
   const csvFilePath = current_filter_csv;
   const header =
     "Make Index,Make,Year Index,Year,Model Index,Model,Related Colors Index,Related Colors,Color Family Index,Color Family,Solid Effect Index,Solid Effect\n";
-  const csvContent = header + row; // Overwrite the file with the header and current row
-  fs.writeFileSync(csvFilePath, csvContent);
+  const csvContent = header + row;
+
+  try {
+    await fs.promises.writeFile(csvFilePath, csvContent);
+    console.log("File written successfully");
+  } catch (error) {
+    console.error("Error writing file:", error);
+    throw error; // Re-throw the error if you want calling code to handle it
+  }
+};
+const writeCurrentSearchFiltersParametersToCsv = (filtersObject) => {
+  try {
+    const csvFilePath = search_filter_param_csv;
+    // Convert the object to JSON string
+    const jsonString = JSON.stringify(filtersObject, null, 2);
+    fs.writeFileSync(csvFilePath, jsonString);
+    console.log("✓ Filters written to CSV:", jsonString);
+    return true;
+  } catch (error) {
+    console.error("❌ Error writing filters to CSV:", error);
+    return false;
+  }
 };
 
-const appendCurrentRowToCsv = (row) => {
+const appendCurrentRowToCsv = async (row) => {
   const csvFilePath = all_completed_filter_csv;
-  const fileExists = fs.existsSync(csvFilePath);
-  if (!fileExists) {
-    const header =
-      "Make Index,Make,Year Index,Year,Model Index,Model,Related Colors Index,Related Colors,Color Family Index,Color Family,Solid Effect Index,Solid Effect\n";
-    fs.writeFileSync(csvFilePath, header); // Write the header
+
+  try {
+    const fileExists = fs.existsSync(csvFilePath);
+
+    if (!fileExists) {
+      const header =
+        "Make Index,Make,Year Index,Year,Model Index,Model,Related Colors Index,Related Colors,Color Family Index,Color Family,Solid Effect Index,Solid Effect\n";
+      await fs.promises.writeFile(csvFilePath, header);
+    }
+
+    await fs.promises.appendFile(csvFilePath, row);
+    console.log("Row appended successfully");
+  } catch (error) {
+    console.error("Error appending to file:", error);
+    throw error;
   }
-  fs.appendFileSync(csvFilePath, row);
 };
 const readLastRowFromCsv = (csvFilePath) => {
   if (!fs.existsSync(csvFilePath)) {
@@ -1371,6 +1559,53 @@ const readLastRowFromCsv = (csvFilePath) => {
   const lastRow = rows[rows.length - 1]; // Get the last row
   return lastRow.split(","); // Split the row into columns
 };
+function readJsonRowFromCsv(filePath) {
+  try {
+    const fs = require("fs");
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      console.log("CSV file does not exist:", filePath);
+      return null;
+    }
+
+    const data = fs.readFileSync(filePath, "utf8").trim();
+    console.log("Raw file content search_filter_param_csv :", data);
+
+    if (!data) {
+      console.log("File is empty");
+      return null;
+    }
+
+    // Try to parse the entire content as JSON
+    try {
+      const parsedData = JSON.parse(data);
+      console.log("✓ Successfully parsed JSON from file");
+      return parsedData;
+    } catch (parseError) {
+      console.error("❌ Error parsing JSON:", parseError.message);
+
+      // If direct parse fails, try to extract JSON from the content
+      const jsonMatch = data.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const extractedJson = JSON.parse(jsonMatch[0]);
+          console.log("✓ Successfully extracted and parsed JSON");
+          return extractedJson;
+        } catch (extractError) {
+          console.error(
+            "❌ Error parsing extracted JSON:",
+            extractError.message
+          );
+        }
+      }
+      return null;
+    }
+  } catch (error) {
+    console.error("❌ Error reading CSV file:", error);
+    return null;
+  }
+}
 
 async function loadFromPage(res) {
   console.log(`step 2 `);
@@ -1378,19 +1613,32 @@ async function loadFromPage(res) {
   let make_drop_down = await get_make_drop_down();
   let year_drop_down = await get_year_drop_down();
 
-  let model_drop_down = [];
   let related_colors_drop_down = await get_related_colors_drop_down();
   let color_family_drop_down = await get_color_family_drop_down();
   let solid_effect_drop_down = await get_solid_effect_drop_down();
-  const lastRow = readLastRowFromCsv(current_filter_csv);
-  let make_drop_down_index = 1; //0
-  let year_drop_down_index = 1; //0
+  let lastRow = readLastRowFromCsv(current_filter_csv);
+  let obj_search_filter_param_csv = {
+    allowed_years: [],
+    allowed_makes: [],
+    allowed_models: [],
+  };
+  try {
+    obj_search_filter_param_csv = readJsonRowFromCsv(search_filter_param_csv);
+
+    console.log(
+      "Raw obj_search_filter_param_csv row:",
+      obj_search_filter_param_csv
+    );
+  } catch (parseError) {
+    console.error("Error parsing JSON from CSV:", parseError);
+  }
+  let make_drop_down_index = 0; //0
+  let year_drop_down_index = 0; //0
   let model_drop_down_index = 0;
   // let model_drop_down_text = "";
   let related_colors_drop_down_index = 0;
   let color_family_drop_down_index = 0;
   let solid_effect_drop_down_index = 0;
-  // let starting_from_csv_skip_loop = false;
   if (lastRow) {
     make_drop_down_index = parseInt(lastRow[0]);
     year_drop_down_index = parseInt(lastRow[2]);
@@ -1400,7 +1648,6 @@ async function loadFromPage(res) {
     color_family_drop_down_index = parseInt(lastRow[8]);
     solid_effect_drop_down_index = parseInt(lastRow[10]);
 
-    // starting_from_csv_skip_loop = true;
   } else {
     const all_completed = readLastRowFromCsv(all_completed_filter_csv);
     if (all_completed) {
@@ -1411,7 +1658,6 @@ async function loadFromPage(res) {
       related_colors_drop_down_index = parseInt(all_completed[6]);
       color_family_drop_down_index = parseInt(all_completed[8]);
       solid_effect_drop_down_index = parseInt(all_completed[10]);
-      // starting_from_csv_skip_loop = true;
     }
   }
   filters_obj = {
@@ -1426,7 +1672,8 @@ async function loadFromPage(res) {
   };
   await setSearchFilters(page, null);
 
-  if (lastRow || all_completed) {
+  // if (lastRow || all_completed) {
+  if (false) {
     let filter_completed = false;
     if (solid_effect_drop_down_index >= solid_effect_drop_down.length - 1) {
       solid_effect_drop_down_index = 0;
@@ -1453,13 +1700,13 @@ async function loadFromPage(res) {
       related_colors_drop_down_index = 0;
       model_drop_down_index++;
     }
-    // console.log("model_drop_down:", _models_drop_down);
+
     if (
       model_drop_down_index >= _models_drop_down.length - 1 &&
       filter_completed
     ) {
+      console.log("incementing year_drop_down_index");
       model_drop_down_index = 0;
-      // model_drop_down_text = "";
       year_drop_down_index++;
     }
 
@@ -1483,107 +1730,143 @@ async function loadFromPage(res) {
   console.log("year:", year_drop_down_index, "/", year_drop_down.length);
   console.log("model:", model_drop_down_index, "/", _models_drop_down.length);
   // console.log("model model_drop_down_text :", model_drop_down_text, "/", _models_drop_down.length);
-  console.log(
-    "related_colors:",
-    related_colors_drop_down_index,
-    "/",
-    related_colors_drop_down.length
-  );
-  console.log(
-    "color_family:",
-    color_family_drop_down_index,
-    "/",
-    color_family_drop_down.length
-  );
-  console.log(
-    "solid_effect:",
-    solid_effect_drop_down_index,
-    "/",
-    solid_effect_drop_down.length
-  );
-
+  console.log("obj_search_filter_param_csv:", obj_search_filter_param_csv);
+  let row;
   for (; make_drop_down_index < make_drop_down.length; make_drop_down_index++) {
+    if (obj_search_filter_param_csv?.allowed_makes?.length > 0) {
+      if (
+        !obj_search_filter_param_csv.allowed_makes.includes(
+          make_drop_down[make_drop_down_index]
+        )
+      ) {
+        console.log(
+          "in if condition not alowed make_drop_down : ",
+          make_drop_down[make_drop_down_index]
+        );
+        continue;
+      } else {
+        // console.log(
+        //   "else alloed make_drop_down : ",
+        //   make_drop_down[make_drop_down_index]
+        // );
+      }
+    }
     for (
       ;
       year_drop_down_index < year_drop_down.length;
       year_drop_down_index++
     ) {
+      console.log("year:", year_drop_down_index, "/", year_drop_down.length);
+      const currentYear = year_drop_down[year_drop_down_index];
+      if (obj_search_filter_param_csv?.allowed_years?.length > 0) {
+        const currentYearNumber = Number(currentYear);
+
+        if (
+          !obj_search_filter_param_csv.allowed_years.includes(currentYearNumber)
+        ) {
+          console.log("in if not alloedcondition", currentYear);
+          continue;
+        }
+      }
+      
+      filters_obj = {
+        description: null,
+        year: 0,
+        make: make_drop_down_index,
+        model: null,
+        // model_text: model_drop_down_text,
+        plastic_parts: null,
+        groupdesc: null,
+        effect: null,
+      };
+      await setSearchFilters(page);
       for (
         ;
         model_drop_down_index < _models_drop_down.length;
         model_drop_down_index++
       ) {
+
+        if (obj_search_filter_param_csv?.allowed_models?.length > 0) {
+          if (
+            !obj_search_filter_param_csv.allowed_models.includes(
+              _models_drop_down[model_drop_down_index]
+            )
+          ) {
+            console.log(
+              "in if condition not alowed model_drop_down : ",
+              _models_drop_down[model_drop_down_index]
+            );
+            continue;
+          } 
+          else {
+            // console.log(
+            //   "else alloed model_drop_down : ",
+            //   _models_drop_down[model_drop_down_index]
+            // );
+          }
+        }
+        console.log(
+          "in start related_colors_drop_down_index : ",
+          related_colors_drop_down_index
+        );
+
         for (
           ;
-          related_colors_drop_down_index < related_colors_drop_down.length;
+          related_colors_drop_down_index < 1;//related_colors_drop_down.length;
           related_colors_drop_down_index++
         ) {
+          console.log(
+            "in start color_family_drop_down_index : ",
+            color_family_drop_down_index
+          );
           for (
             ;
-            color_family_drop_down_index < color_family_drop_down.length;
+            color_family_drop_down_index < 1;//color_family_drop_down.length;
             color_family_drop_down_index++
           ) {
+            console.log(
+              "in start solid_effect_drop_down_index : ",
+              solid_effect_drop_down_index
+            );
             for (
               ;
-              solid_effect_drop_down_index < solid_effect_drop_down.length;
+              solid_effect_drop_down_index < 1;//solid_effect_drop_down.length;
               solid_effect_drop_down_index++
             ) {
-              // if (starting_from_csv_skip_loop) {
-              //     starting_from_csv_skip_loop = false;
-              //     continue;
-              // }
-              console.log("Processing combination in loop :");
               console.log(
-                "make:",
-                make_drop_down_index,
-                "/",
-                make_drop_down.length
-              );
-              console.log(
-                "year:",
-                year_drop_down_index,
-                "/",
-                year_drop_down.length
-              );
-              console.log(
-                "model:",
-                model_drop_down_index,
-                "/",
-                model_drop_down.length
-              );
-              // console.log("model model_drop_down_text :", model_drop_down_text, "/", model_drop_down.length);
-              console.log(
-                "related_colors:",
-                related_colors_drop_down_index,
-                "/",
-                related_colors_drop_down.length
-              );
-              console.log(
-                "color_family:",
-                color_family_drop_down_index,
-                "/",
-                color_family_drop_down.length
-              );
-              console.log(
-                "solid_effect:",
-                solid_effect_drop_down_index,
-                "/",
-                solid_effect_drop_down.length
+                "in betwee solid_effect_drop_down_index : ",
+                solid_effect_drop_down_index
               );
 
-              filters_obj = {
-                description: null,
-                year: year_drop_down_index,
-                make: make_drop_down_index,
-                model: model_drop_down_index,
-                // model_text: model_drop_down_text,
-                plastic_parts: related_colors_drop_down_index,
-                groupdesc: color_family_drop_down_index,
-                effect: solid_effect_drop_down_index,
-              };
-
+              row =
+                [
+                  make_drop_down_index,
+                  make_drop_down[make_drop_down_index],
+                  year_drop_down_index,
+                  year_drop_down[year_drop_down_index],
+                  model_drop_down_index,
+                  _models_drop_down[model_drop_down_index],
+                  related_colors_drop_down_index,
+                  related_colors_drop_down[related_colors_drop_down_index],
+                  color_family_drop_down_index,
+                  color_family_drop_down[color_family_drop_down_index],
+                  solid_effect_drop_down_index,
+                  solid_effect_drop_down[solid_effect_drop_down_index],
+                ].join(",") + "\n";
+              await writeCurrentRowToCsv(row);
+              await appendCurrentRowToCsv(row);
               try {
-                // await scrapDataFromPages();
+                filters_obj = {
+                  description: null,
+                  year: year_drop_down_index,
+                  make: make_drop_down_index,
+                  model: model_drop_down_index,
+                  // model_text: model_drop_down_text,
+                  plastic_parts: related_colors_drop_down_index,
+                  groupdesc: color_family_drop_down_index,
+                  effect: solid_effect_drop_down_index,
+                };
+
                 await retryWithBackoff(
                   async () => {
                     await scrapDataFromPages();
@@ -1592,23 +1875,6 @@ async function loadFromPage(res) {
                   retryOptions.maxRetries,
                   retryOptions.initialDelay
                 );
-                const row =
-                  [
-                    make_drop_down_index,
-                    make_drop_down[make_drop_down_index],
-                    year_drop_down_index,
-                    year_drop_down[year_drop_down_index],
-                    model_drop_down_index,
-                    _models_drop_down[model_drop_down_index],
-                    related_colors_drop_down_index,
-                    related_colors_drop_down[related_colors_drop_down_index],
-                    color_family_drop_down_index,
-                    color_family_drop_down[color_family_drop_down_index],
-                    solid_effect_drop_down_index,
-                    solid_effect_drop_down[solid_effect_drop_down_index],
-                  ].join(",") + "\n";
-                writeCurrentRowToCsv(row);
-                appendCurrentRowToCsv(row);
 
                 total_count++;
               } catch (error) {
@@ -1638,7 +1904,7 @@ async function loadFromPage(res) {
       };
     }
     if (shouldStop) break; // Exit the make_drop_down loop
-    year_drop_down_index = 1; //0
+    year_drop_down_index = 0; //0
   }
 
   return;
@@ -1740,6 +2006,8 @@ async function scrapDataFromPages() {
   currentRecursionDepth = 0;
   visitedMultitones.clear();
   await setSearchFilters(page);
+  
+  console.log('scrapDataFromPages filters : ',filters_obj);
   // return;
   while (hasNextPage) {
     let containers_details = null;
@@ -2021,7 +2289,6 @@ const escapeCsvValue = (value) => {
   return str;
 };
 
-
 async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
   const makeDropdown = await get_make_drop_down();
   const filePath = "paint/sheets/";
@@ -2031,27 +2298,30 @@ async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
 
   // Process each row to upload images and get updated image paths
   const processedDataArray = [];
-  
+
   for (const row of dataArray) {
     let updatedRow = { ...row };
-    
+
     // If there's an image path and it's a local file, upload it
     if (row.image_path && fs.existsSync(row.image_path)) {
       console.log(`Uploading image: ${row.image_path}`);
-      
+
       const uploadResult = await uploadSingle(row);
-      
+
       if (uploadResult.success && uploadResult.imageSrc) {
         // Update the image_path with the uploaded image URL
         updatedRow.image_path = uploadResult.imageSrc;
         console.log(`✓ Image uploaded successfully: ${uploadResult.imageSrc}`);
       } else {
-        console.error(`❌ Failed to upload image: ${row.image_path}`, uploadResult.error);
+        console.error(
+          `❌ Failed to upload image: ${row.image_path}`,
+          uploadResult.error
+        );
         // Keep the original image_path if upload fails, or set to empty
         // updatedRow.image_path = ''; // Uncomment if you want to clear failed uploads
       }
     }
-    
+
     processedDataArray.push(updatedRow);
   }
 
@@ -2075,20 +2345,22 @@ async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
 
   if (fs.existsSync(fileName)) {
     fs.appendFileSync(fileName, `\n${csvData}`);
-    write_response.write(`data: ${JSON.stringify({
-      type: 'new_rows',
-      rows: processedDataArray
-    })}\n\n`);
+    write_response.write(
+      `data: ${JSON.stringify({
+        type: "new_rows",
+        rows: processedDataArray,
+      })}\n\n`
+    );
     // write_response.write(`data:{row: ${csvData}}\n\n`);
   } else {
     const header = Object.keys(cleanedDataArray[0]).join(",");
     // fs.writeFileSync(fileName, `${header}\n${csvData}`);
   }
-  
-  console.log(`✓ CSV saved with ${processedDataArray.length} rows (including uploaded images)`);
+
+  console.log(
+    `✓ CSV saved with ${processedDataArray.length} rows (including uploaded images)`
+  );
 }
-
-
 
 app.get("/general_paint", async (req, res) => {
   try {
