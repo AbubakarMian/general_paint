@@ -1647,7 +1647,6 @@ async function loadFromPage(res) {
     related_colors_drop_down_index = parseInt(lastRow[6]);
     color_family_drop_down_index = parseInt(lastRow[8]);
     solid_effect_drop_down_index = parseInt(lastRow[10]);
-
   } else {
     const all_completed = readLastRowFromCsv(all_completed_filter_csv);
     if (all_completed) {
@@ -1768,7 +1767,7 @@ async function loadFromPage(res) {
           continue;
         }
       }
-      
+
       filters_obj = {
         description: null,
         year: 0,
@@ -1785,7 +1784,6 @@ async function loadFromPage(res) {
         model_drop_down_index < _models_drop_down.length;
         model_drop_down_index++
       ) {
-
         if (obj_search_filter_param_csv?.allowed_models?.length > 0) {
           if (
             !obj_search_filter_param_csv.allowed_models.includes(
@@ -1797,8 +1795,7 @@ async function loadFromPage(res) {
               _models_drop_down[model_drop_down_index]
             );
             continue;
-          } 
-          else {
+          } else {
             // console.log(
             //   "else alloed model_drop_down : ",
             //   _models_drop_down[model_drop_down_index]
@@ -1812,7 +1809,7 @@ async function loadFromPage(res) {
 
         for (
           ;
-          related_colors_drop_down_index < 1;//related_colors_drop_down.length;
+          related_colors_drop_down_index < 1; //related_colors_drop_down.length;
           related_colors_drop_down_index++
         ) {
           console.log(
@@ -1821,7 +1818,7 @@ async function loadFromPage(res) {
           );
           for (
             ;
-            color_family_drop_down_index < 1;//color_family_drop_down.length;
+            color_family_drop_down_index < 1; //color_family_drop_down.length;
             color_family_drop_down_index++
           ) {
             console.log(
@@ -1830,7 +1827,7 @@ async function loadFromPage(res) {
             );
             for (
               ;
-              solid_effect_drop_down_index < 1;//solid_effect_drop_down.length;
+              solid_effect_drop_down_index < 1; //solid_effect_drop_down.length;
               solid_effect_drop_down_index++
             ) {
               console.log(
@@ -2006,8 +2003,8 @@ async function scrapDataFromPages() {
   currentRecursionDepth = 0;
   visitedMultitones.clear();
   await setSearchFilters(page);
-  
-  console.log('scrapDataFromPages filters : ',filters_obj);
+
+  console.log("scrapDataFromPages filters : ", filters_obj);
   // return;
   while (hasNextPage) {
     let containers_details = null;
@@ -2354,7 +2351,13 @@ async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
     // write_response.write(`data:{row: ${csvData}}\n\n`);
   } else {
     const header = Object.keys(cleanedDataArray[0]).join(",");
-    // fs.writeFileSync(fileName, `${header}\n${csvData}`);
+    fs.writeFileSync(fileName, `${header}\n${csvData}`);
+    write_response.write(
+      `data: ${JSON.stringify({
+        type: "new_rows",
+        rows: processedDataArray,
+      })}\n\n`
+    );
   }
 
   console.log(
