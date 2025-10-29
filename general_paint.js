@@ -32,6 +32,8 @@ const MAX_VISITED_ENTRIES = 1500000;
 let visitedMultitones = new Set();
 let currentRecursionDepth = 0;
 let write_response = null;
+let processedCombinations = new Set();
+let processedRecords = new Set();
 
 async function loadUrl(retries = 1000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -632,7 +634,7 @@ async function findDropdownIndex(selector, text) {
     return 0; // Return 0 instead of throwing error
   }
 }
-async function scrapFormaulaDetailsData(container) {
+async function scrapFormaulaDetailsData_dell(container) {
   let sid = container.sid;
   let id = container.familyId;
   console.log("its container scrapFormaulaDetailsData : ", container);
@@ -702,6 +704,148 @@ async function scrapFormaulaDetailsData(container) {
     },
     { color_paths, colorCode }
   ); // Pass color_paths as an argument to evaluate
+
+  return data;
+}
+// Function to manage Set size
+function manageSetSize() {
+  if (processedCombinations.size > 5000) {
+    // Convert Set to Array, remove first 3000 elements, then convert back to Set
+    const arrayFromSet = Array.from(processedCombinations);
+    const remainingElements = arrayFromSet.slice(3000);
+    processedCombinations = new Set(remainingElements);
+    console.log(
+      `Removed 3000 old records. Current size: ${processedCombinations.size}`
+    );
+  }
+}
+
+async function scrapFormaulaDetailsData(container) {
+  let sid = container.sid;
+  let id = container.familyId;
+  console.log("its container scrapFormaulaDetailsData : ", container);
+
+  // First, check if we can get the panel number without creating images
+  let load_url =
+    "https://generalpaint.info/v2/search/family?id=" + id + "&sid=" + sid;
+  await new_page.goto(load_url);
+  randomWaitTime = getRandomNumber(3500, 5500);
+  await new_page.waitForTimeout(randomWaitTime);
+  await new_page.waitForSelector(".container.mt-4");
+
+  // Get panel number first without creating images
+  const panelNo = await new_page.evaluate(() => {
+    const trElements = document.querySelectorAll("tbody tr");
+
+    // Find the first row with "STANDARD" tone
+    for (let index = 0; index < trElements.length; index++) {
+      const tr = trElements[index];
+      const toneElement = Array.from(tr.querySelectorAll(".formula-h1")).find(
+        (el) => el.innerText.includes("Tone")
+      )?.nextElementSibling;
+      const tone = toneElement ? toneElement.innerText.trim() : "";
+
+      // Only process if tone is "STANDARD"
+      if (tone.toLowerCase() === "standard") {
+        let panelNoElement = Array.from(
+          tr.querySelectorAll(".formula-h1")
+        ).find((el) => el.innerText.includes("Panel no."))?.nextElementSibling;
+        let panelNo = panelNoElement ? panelNoElement.innerText.trim() : "";
+        return panelNo;
+      }
+    }
+    return null;
+  });
+
+  // Check for duplicates using panelNo BEFORE creating images
+  if (panelNo) {
+    if (processedCombinations.has(panelNo)) {
+      console.log(`Skipping duplicate panel number: ${panelNo}`);
+      return []; // Return empty array for duplicates
+    }
+
+    // Add to processed combinations and manage size
+    processedCombinations.add(panelNo);
+    console.log(
+      `Processing new panel number: ${panelNo}. Current processed count: ${processedCombinations.size}`
+    );
+  } else {
+    console.log("No STANDARD tone found with panel number");
+    return [];
+  }
+
+  // Only create images if it's not a duplicate
+  let color_paths = await downloadSearchFamilyCanvasImage(sid, id, new_page);
+  console.log("multiple colors : ", color_paths);
+  let colorCode = parsePaintInfo(container.content).code;
+
+  const data = await new_page.evaluate(
+    ({ color_paths, colorCode, panelNo }) => {
+      const results = [];
+      const formulaH2 = document.querySelector(".formula-h2");
+      const yearColorText = formulaH2 ? formulaH2.innerText.trim() : "";
+      const [year, color] = yearColorText
+        .split("\n")
+        .map((text) => text.trim());
+      const detailsElement = document.querySelector(".formula-info");
+      const details = detailsElement
+        ? detailsElement.getAttribute("data-original-title")
+        : "";
+      const trElements = document.querySelectorAll("tbody tr");
+
+      // Find the specific row with our panel number
+      for (let index = 0; index < trElements.length; index++) {
+        const tr = trElements[index];
+        const toneElement = Array.from(tr.querySelectorAll(".formula-h1")).find(
+          (el) => el.innerText.includes("Tone")
+        )?.nextElementSibling;
+        const tone = toneElement ? toneElement.innerText.trim() : "";
+
+        let currentPanelNoElement = Array.from(
+          tr.querySelectorAll(".formula-h1")
+        ).find((el) => el.innerText.includes("Panel no."))?.nextElementSibling;
+        let currentPanelNo = currentPanelNoElement
+          ? currentPanelNoElement.innerText.trim()
+          : "";
+
+        // Only process if tone is "STANDARD" and panel number matches
+        if (tone.toLowerCase() === "standard" && currentPanelNo === panelNo) {
+          console.log("panel no ", currentPanelNo);
+          const canvasWrapper = tr.querySelector("#canvas_wrapper");
+          let bgColor = "";
+
+          if (canvasWrapper) {
+            const canvas = canvasWrapper.querySelector("canvas");
+            if (canvas) {
+              const ctx = canvas.getContext("2d");
+              const imageData = ctx.getImageData(0, 0, 1, 1).data;
+              bgColor = `rgba(${imageData[0]}, ${imageData[1]}, ${
+                imageData[2]
+              }, ${imageData[3] / 255})`;
+            } else {
+              bgColor = window.getComputedStyle(canvasWrapper).backgroundColor;
+            }
+          }
+
+          results.push({
+            year,
+            color,
+            colorCode,
+            tone,
+            panelNo: currentPanelNo,
+            details,
+            bgColor,
+            image_path: color_paths[index] || null,
+          });
+
+          break;
+        }
+      }
+
+      return results;
+    },
+    { color_paths, colorCode, panelNo }
+  );
 
   return data;
 }
@@ -2219,6 +2363,13 @@ function parsePaintInfo(content) {
 }
 
 async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
+  
+  let new_data_arr = [];
+  const containerKey = `${container.familyId}-${container.sid}`;
+  if (processedRecords.has(containerKey)) {
+    console.log(`Skipping already processed container: ${containerKey}`);
+    return [];
+  }
   let combinedData = {};
   let detailColorUrl = "";
   try {
@@ -2228,6 +2379,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
 
     if (buttons[i]) {
       console.log(`Processing container ${i}`);
+
       await buttons[i].scrollIntoViewIfNeeded();
       const onclickValue = await buttons[i].evaluate((button) =>
         button.getAttribute("onclick")
@@ -2239,15 +2391,16 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
       if (urlAndIdMatch && urlAndIdMatch[1] && urlAndIdMatch[2]) {
         const url = urlAndIdMatch[1];
         const id = urlAndIdMatch[2];
+        manageSetSize();
         let scrap_details = await scrapFormaulaDetailsData(container);
         for (const scrap_detail of scrap_details) {
           combinedData = { ...container, ...scrap_detail };
-          data_arr.push(combinedData);
+          new_data_arr.push(combinedData);
         }
         infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
         detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
         console.log("detailColorUrl:", detailColorUrl);
-        console.log("multiple colors data_arr:", data_arr);
+        console.log("multiple colors data_arr:", new_data_arr);
 
         // await scrapColorInfoData(id);
         // infoColorUrl = 'https://generalpaint.info/v2/search/formula-info?id=107573';
@@ -2261,7 +2414,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
     console.error("url :", detailColorUrl);
   } finally {
     // return combinedData;
-    return data_arr;
+    return new_data_arr;
   }
 }
 const escapeCsvValue = (value) => {
@@ -2287,6 +2440,9 @@ const escapeCsvValue = (value) => {
 };
 
 async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
+  if(!dataArray){
+    return;
+  }
   const makeDropdown = await get_make_drop_down();
   const filePath = "paint/sheets/";
   fs.mkdirSync(path.join("paint", "sheets"), { recursive: true });
