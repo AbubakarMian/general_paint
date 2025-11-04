@@ -16,11 +16,10 @@ let page = null;
 let new_page = null;
 let multitone_page = null;
 let filters_obj = {};
-let interceptedRequests = [];
+let _allmake = [];
 let _models_drop_down = [];
 let outputFilePath = null;
 const xlsx = require("xlsx");
-const { createCanvas } = require("canvas");
 let current_filter_csv = "paint/current_filter_csv.csv";
 let search_filter_param_csv = "paint/search_filter_param_csv.csv";
 let all_completed_filter_csv = "paint/all_completed_filter_csv.csv";
@@ -394,7 +393,7 @@ async function uploadSingle(row_values_obj) {
     paint_codes: row_values_obj.colorCode,
     price: 9.95,
     compare_price: 0.0,
-    image_path: image_path
+    image_path: image_path,
   };
 
   form.append("brand", requestData.brand);
@@ -415,8 +414,10 @@ async function uploadSingle(row_values_obj) {
         ...form.getHeaders(),
         Accept: "*/*",
         Origin: "https://development.hatinco.com",
-        Referer: "https://development.hatinco.com/scratchrepaircar/upload_brand.php",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+        Referer:
+          "https://development.hatinco.com/scratchrepaircar/upload_brand.php",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
       },
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
@@ -429,9 +430,10 @@ async function uploadSingle(row_values_obj) {
     let parsedFiles = null;
     if (res.data && res.data.files) {
       try {
-        parsedFiles = typeof res.data.files === "string" 
-          ? JSON.parse(res.data.files) 
-          : res.data.files;
+        parsedFiles =
+          typeof res.data.files === "string"
+            ? JSON.parse(res.data.files)
+            : res.data.files;
       } catch (e) {
         console.error("Failed to parse files JSON:", e.message);
       }
@@ -448,11 +450,13 @@ async function uploadSingle(row_values_obj) {
     const src = parsedFiles?.[0]?.upload?.response?.image?.src || null;
 
     if (!src) {
-      const errorMsg = `server reported failure: ${JSON.stringify(res.data).slice(0, 200)}`;
+      const errorMsg = `server reported failure: ${JSON.stringify(
+        res.data
+      ).slice(0, 200)}`;
       logFailure(image_path, errorMsg, requestData, {
         status: res.status,
         statusText: res.statusText,
-        data: res.data
+        data: res.data,
       });
       return {
         success: false,
@@ -465,14 +469,16 @@ async function uploadSingle(row_values_obj) {
     }
   } catch (err) {
     console.error("Single upload error for", image_path, err && err.message);
-    
+
     // Enhanced error logging
-    const responseData = err.response ? {
-      status: err.response.status,
-      statusText: err.response.statusText,
-      data: err.response.data,
-      headers: err.response.headers
-    } : null;
+    const responseData = err.response
+      ? {
+          status: err.response.status,
+          statusText: err.response.statusText,
+          data: err.response.data,
+          headers: err.response.headers,
+        }
+      : null;
 
     const errorMsg = err && err.message ? err.message : "unknown error";
     logFailure(image_path, errorMsg, requestData, responseData);
@@ -488,20 +494,25 @@ async function uploadSingle(row_values_obj) {
   }
 }
 
-function logFailure(imagePath, errorMessage, requestData = null, responseData = null) {
+function logFailure(
+  imagePath,
+  errorMessage,
+  requestData = null,
+  responseData = null
+) {
   const timestamp = new Date().toISOString();
   const logEntry = {
     timestamp,
     imagePath,
     error: errorMessage,
     request: requestData,
-    response: responseData
+    response: responseData,
   };
 
   console.error(`\n🚨 UPLOAD FAILURE LOG [${timestamp}] 🚨`);
   console.error(`📁 File: ${imagePath}`);
   console.error(`❌ Error: ${errorMessage}`);
-  
+
   if (requestData) {
     console.error(`📤 Request Details:`);
     console.error(`   - Brand: ${requestData.brand}`);
@@ -511,10 +522,12 @@ function logFailure(imagePath, errorMessage, requestData = null, responseData = 
     console.error(`   - Color Code: ${requestData.paint_codes}`);
     console.error(`   - Price: ${requestData.price}`);
   }
-  
+
   if (responseData) {
     console.error(`📥 Response Details:`);
-    console.error(`   - Status: ${responseData.status} ${responseData.statusText}`);
+    console.error(
+      `   - Status: ${responseData.status} ${responseData.statusText}`
+    );
     if (responseData.data) {
       console.error(`   - Data: ${JSON.stringify(responseData.data, null, 2)}`);
     }
@@ -525,30 +538,35 @@ function logFailure(imagePath, errorMessage, requestData = null, responseData = 
     const curlCommand = generateCurlCommand(requestData, imagePath);
     console.error(`🔗 cURL Command for Postman:`);
     console.error(curlCommand);
-    console.error(`💡 Tip: Copy this curl command and use Postman's "Import -> Raw text" feature`);
+    console.error(
+      `💡 Tip: Copy this curl command and use Postman's "Import -> Raw text" feature`
+    );
   }
-  
+
   console.error(`--- End of Failure Log ---\n`);
 
   // Optional: Write to file for persistent logging
   try {
-    const fs = require('fs');
-    const logDir = './upload_logs';
+    const fs = require("fs");
+    const logDir = "./upload_logs";
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true });
     }
-    
+
     const logFile = `${logDir}/upload_failures.log`;
-    fs.appendFileSync(logFile, JSON.stringify(logEntry, null, 2) + ',\n');
-    
+    fs.appendFileSync(logFile, JSON.stringify(logEntry, null, 2) + ",\n");
+
     // Also save curl commands to a separate file for easy access
     if (requestData && imagePath) {
       const curlCommand = generateCurlCommand(requestData, imagePath);
       const curlFile = `${logDir}/curl_commands.txt`;
-      fs.appendFileSync(curlFile, `# ${timestamp} - ${imagePath}\n${curlCommand}\n\n`);
+      fs.appendFileSync(
+        curlFile,
+        `# ${timestamp} - ${imagePath}\n${curlCommand}\n\n`
+      );
     }
   } catch (fileError) {
-    console.error('Could not write to log file:', fileError.message);
+    console.error("Could not write to log file:", fileError.message);
   }
 }
 
@@ -561,15 +579,15 @@ function generateCurlCommand(requestData, imagePath) {
     `-F "paint_codes=${requestData.paint_codes}"`,
     `-F "price=${requestData.price}"`,
     `-F "compare_price=${requestData.compare_price || 0.0}"`,
-    `-F "images[]=@${imagePath}"`
-  ].join(' \\\n  ');
+    `-F "images[]=@${imagePath}"`,
+  ].join(" \\\n  ");
 
   const headers = [
     '-H "Accept: */*"',
     '-H "Origin: https://development.hatinco.com"',
     '-H "Referer: https://development.hatinco.com/scratchrepaircar/upload_brand.php"',
-    '-H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"'
-  ].join(' \\\n  ');
+    '-H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"',
+  ].join(" \\\n  ");
 
   return `curl -X POST \\\n  ${headers} \\\n  ${formFields} \\\n  "${API_URL}"`;
 }
@@ -1238,6 +1256,21 @@ const goToNextPage = async (page) => {
 };
 
 async function get_make_drop_down() {
+  if(_allmake.length){
+    return _allmake;
+  }
+    let randomWaitTime = getRandomNumber(2500, 3500);
+  await page.waitForTimeout(randomWaitTime);
+  console.log("now selecting model drop down");
+  let makes = await page.$$eval(
+    "#make_dropdown option",
+    (options) => {
+      console.log("options model drop down : ", options);
+      return options.map((o) => o.textContent.trim());
+    }
+  );
+  _allmake = makes;
+  return makes;
   return [
     //248
     "Manufacturer",
@@ -1910,7 +1943,6 @@ async function loadFromPage(res) {
   };
   await setSearchFilters(page, null);
 
-
   let shouldStop = false; // Flag to control loop termination
   let total_count = 0;
   const retryOptions = {
@@ -1925,6 +1957,10 @@ async function loadFromPage(res) {
   console.log("model:", model_drop_down_index, "/", _models_drop_down.length);
   // console.log("model model_drop_down_text :", model_drop_down_text, "/", _models_drop_down.length);
   console.log("obj_search_filter_param_csv:", obj_search_filter_param_csv);
+          console.log(
+          "first start  make_drop_down : ",
+          make_drop_down[make_drop_down_index]
+        );
   let row;
   for (; make_drop_down_index < make_drop_down.length; make_drop_down_index++) {
     if (obj_search_filter_param_csv?.allowed_makes?.length > 0) {
@@ -1939,6 +1975,10 @@ async function loadFromPage(res) {
         );
         continue;
       } else {
+        console.log(
+          "in if condition allowed make_drop_down : ",
+          make_drop_down[make_drop_down_index]
+        );
       }
     }
     for (
@@ -1968,12 +2008,23 @@ async function loadFromPage(res) {
         effect: null,
       };
       await setSearchFilters(page);
+        await page.waitForFunction(
+          () => {
+            const modelSelect = document.querySelector("#models_dropdown");
+            return modelSelect && modelSelect.options.length > 1; // More than just empty option
+          },
+          { timeout: 10000 }
+        );
+        console.log(
+        "all models : ",
+        _models_drop_down
+      );
       for (
         let adjusted_index = 1;
         adjusted_index <= _models_drop_down.length;
         adjusted_index++
       ) {
-         const model_drop_down_index = adjusted_index % _models_drop_down.length;
+        let model_drop_down_index = adjusted_index % _models_drop_down.length;
         if (obj_search_filter_param_csv?.allowed_models?.length > 0) {
           if (
             !obj_search_filter_param_csv.allowed_models.includes(
@@ -1993,10 +2044,13 @@ async function loadFromPage(res) {
           }
         }
         console.log(
-          "in start related_colors_drop_down_index : ",
-          related_colors_drop_down_index
+          "in model_drop_down_index : ",
+          model_drop_down_index
         );
-
+        console.log(
+          "in _models_drop_down.length : ",
+          _models_drop_down.length
+        );
         for (
           ;
           related_colors_drop_down_index < 1; //related_colors_drop_down.length;
@@ -2409,7 +2463,6 @@ function parsePaintInfo(content) {
 }
 
 async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
-  
   let new_data_arr = [];
   const containerKey = `${container.familyId}-${container.sid}`;
   if (processedRecords.has(containerKey)) {
@@ -2486,10 +2539,10 @@ const escapeCsvValue = (value) => {
 };
 
 async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
-  if(!dataArray){
+  if (!dataArray) {
     return;
   }
-  const makeDropdown = await get_make_drop_down();
+  // const makeDropdown = await get_make_drop_down();
   const filePath = "paint/sheets/";
   fs.mkdirSync(path.join("paint", "sheets"), { recursive: true });
   fileName = outputFilePath;
