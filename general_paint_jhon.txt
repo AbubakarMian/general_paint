@@ -5,7 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const { json, text } = require("stream/consumers");
 const axios = require("axios");
-
 const FormData = require("form-data");
 const app = express();
 const PORT = 5005;
@@ -19,15 +18,13 @@ let multitone_page = null;
 let filters_obj = {};
 let _allmake = [];
 let _models_drop_down = [];
-let _check_duplicates = false;
 let outputFilePath = null;
 const xlsx = require("xlsx");
 let current_filter_csv = "paint/current_filter_csv.csv";
 let search_filter_param_csv = "paint/search_filter_param_csv.csv";
 let all_completed_filter_csv = "paint/all_completed_filter_csv.csv";
 const API_URL =
-  "https://localhost/scratchrepaircar/upload_shopify.php";
-  // "https://development.hatinco.com/scratchrepaircar/upload_shopify.php";
+  "https://development.hatinco.com/scratchrepaircar/upload_shopify.php";
 
 const MAX_RECURSION_DEPTH = 15;
 const MAX_VISITED_ENTRIES = 1500000;
@@ -192,8 +189,6 @@ app.get("/loadurl", async (req, res) => {
     let allowed_years = [];
     let allowed_makes = safeSplit(req.query.make);
     let allowed_models = safeSplit(req.query.model);
-    let check_duplicates = req.query.check_duplicates === true 
-    || req.query.check_duplicates === 'true';
 
     // Check if year is a range (e.g., "2024-2027" or "2027-2024")
     if (year && typeof year === "string" && year.includes("-")) {
@@ -230,12 +225,15 @@ app.get("/loadurl", async (req, res) => {
       plastic_parts: req.query.related_colors || 0,
       groupdesc: req.query.color_family || 0,
       effect: req.query.solid_effect || 0,
-      check_duplicates: check_duplicates,
     };
 
     const current_search = {
+      // outputFilePath: req.query.outputFilePath || null,
       make: allowed_makes.length > 0 ? allowed_makes[0] : null, // Use the processed array
       year: year,
+      // allowed_years: allowed_years,
+      // allowed_makes: allowed_makes,
+      // allowed_models: allowed_models,
       model: allowed_models.length > 0 ? allowed_models[0] : null, // Use the processed array
       plastic_parts: req.query.related_colors || 0,
       groupdesc: req.query.color_family || 0,
@@ -367,37 +365,20 @@ async function buildFilterRow(filters_search) {
     throw error;
   }
 }
-function base64ToBlob(base64, contentType) {
-    const byteCharacters = atob(base64);
-    const byteArrays = [];
-    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-    const slice = byteCharacters.slice(offset, offset + 512);
-    const byteNumbers = new Array(slice.length);
-    for (let i = 0; i < slice.length; i++) {
-    byteNumbers[i] = slice.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    byteArrays.push(byteArray);
-    }
-    return new Blob(byteArrays, {type: contentType});
-}
+
 async function uploadSingle(row_values_obj) {
   let image_path = row_values_obj.image_path;
-  const base64String = row_values_obj.image_path;
   const form = new FormData();
   const stream = fs.createReadStream(image_path);
   console.log("uploadSingle file", image_path);
   console.log("uploadSingle row_values_obj", row_values_obj);
 
-
-  const normalizedImagePath = image_path.replace(/\\/g, '/');
-
-  if (!fs.existsSync(normalizedImagePath)) {
-    console.error("File does not exist:", normalizedImagePath);
+  if (!fs.existsSync(image_path)) {
+    console.error("File does not exist:", image_path);
     return { success: false, error: "File does not exist", imageSrc: null };
   }
-  if (!fs.statSync(normalizedImagePath).isFile()) {
-    console.error("Not a valid file:", normalizedImagePath);
+  if (!fs.statSync(image_path).isFile()) {
+    console.error("Not a valid file:", image_path);
     return { success: false, error: "Not a valid file", imageSrc: null };
   }
 
@@ -412,8 +393,7 @@ async function uploadSingle(row_values_obj) {
     paint_codes: row_values_obj.colorCode,
     price: 9.95,
     compare_price: 0.0,
-    image_path: normalizedImagePath,
-    check_duplicates: _check_duplicates,
+    image_path: image_path,
   };
 
   form.append("brand", requestData.brand);
@@ -423,30 +403,9 @@ async function uploadSingle(row_values_obj) {
   form.append("paint_codes", requestData.paint_codes);
   form.append("price", requestData.price);
   form.append("compare_price", requestData.compare_price);
-  // form.append("check_duplicates", requestData.check_duplicates);
-  console.log("check_duplicates", requestData.check_duplicates);
 
   // ✅ CORRECT: This is the right way to append the file
-  // form.append("images[]", fs.createReadStream(image_path));
-//   form.append("images[]", fs.createReadStream(image_path), {
-//   filename: path.basename(image_path),
-//   contentType: 'image/png'
-// });
-  //   form.append("images[]", fs.readFileSync(image_path), {
-  //   filename: path.basename(image_path),
-  //   contentType: 'image/png' // or get mime type dynamically
-  // });
-
-
-      const imageBuffer = fs.readFileSync(normalizedImagePath);
-    const filename = path.basename(normalizedImagePath);
-    const blob = base64ToBlob(base64String, getContentType(normalizedImagePath));
-    formData.append("images[]", blob, filename);
-    // form.append("images[]", imageBuffer, {
-    //   filename: filename,
-    //   contentType: getContentType(normalizedImagePath),
-    //   knownLength: imageBuffer.length
-    // });
+  form.append("images[]", fs.createReadStream(image_path));
 
   try {
     console.log("Uploading single file:", image_path);
@@ -489,25 +448,24 @@ async function uploadSingle(row_values_obj) {
 
     // Extract image src
     const src = parsedFiles?.[0]?.upload?.response?.image?.src || null;
-    const is_duplicate = parsedFiles?.[0]?.is_duplicate || false;
 
     if (!src) {
       const errorMsg = `server reported failure: ${JSON.stringify(
         res.data
       ).slice(0, 200)}`;
-      logFailure( normalizedImagePath, errorMsg, requestData, {
+      logFailure(image_path, errorMsg, requestData, {
         status: res.status,
         statusText: res.statusText,
         data: res.data,
       });
       return {
         success: false,
-        error: "Product duplicate",
+        error: "Upload failed - no image source returned",
         imageSrc: null,
       };
     } else {
       console.log("Single upload successful:", image_path, "->", src);
-      return { success: true, imageSrc: src,is_duplicate:is_duplicate, error: null };
+      return { success: true, imageSrc: src, error: null };
     }
   } catch (err) {
     console.error("Single upload error for", image_path, err && err.message);
@@ -523,7 +481,7 @@ async function uploadSingle(row_values_obj) {
       : null;
 
     const errorMsg = err && err.message ? err.message : "unknown error";
-    logFailure(normalizedImagePath, errorMsg, requestData, responseData);
+    logFailure(image_path, errorMsg, requestData, responseData);
 
     await sleep(2000);
     return { success: false, error: err.message, imageSrc: null };
@@ -611,17 +569,7 @@ function logFailure(
     console.error("Could not write to log file:", fileError.message);
   }
 }
-function getContentType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  const contentTypes = {
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp'
-  };
-  return contentTypes[ext] || 'application/octet-stream';
-}
+
 function generateCurlCommand(requestData, imagePath) {
   const formFields = [
     `-F "brand=${requestData.brand}"`,
@@ -630,7 +578,6 @@ function generateCurlCommand(requestData, imagePath) {
     `-F "color_name=${requestData.color_name}"`,
     `-F "paint_codes=${requestData.paint_codes}"`,
     `-F "price=${requestData.price}"`,
-    `-F "check_duplicates=${requestData.check_duplicates}"`,
     `-F "compare_price=${requestData.compare_price || 0.0}"`,
     `-F "images[]=@${imagePath}"`,
   ].join(" \\\n  ");
@@ -931,7 +878,7 @@ async function scrapFormaulaDetailsData(container) {
     }
 
     // Add to processed combinations and manage size
-    // processedCombinations.add(panelNo);
+    processedCombinations.add(panelNo);
     console.log(
       `Processing new panel number: ${panelNo}. Current processed count: ${processedCombinations.size}`
     );
@@ -1964,7 +1911,6 @@ async function loadFromPage(res) {
   let related_colors_drop_down_index = 0;
   let color_family_drop_down_index = 0;
   let solid_effect_drop_down_index = 0;
-  _check_duplicates = obj_search_filter_param_csv.check_duplicates;
   if (lastRow) {
     make_drop_down_index = parseInt(lastRow[0]);
     year_drop_down_index = parseInt(lastRow[2]);
@@ -2517,14 +2463,6 @@ function parsePaintInfo(content) {
 }
 
 async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
-    let  detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
-
-    write_response.write(
-    `data: ${JSON.stringify({
-      type: "processing_new_row",
-      url: detailColorUrl,
-    })}\n\n`
-  );
   let new_data_arr = [];
   const containerKey = `${container.familyId}-${container.sid}`;
   if (processedRecords.has(containerKey)) {
@@ -2532,6 +2470,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
     return [];
   }
   let combinedData = {};
+  let detailColorUrl = "";
   try {
     buttons = await listpage.$$(
       '#digital_formula > .root button[data-original-title="Color Information"]'
@@ -2558,7 +2497,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
           new_data_arr.push(combinedData);
         }
         infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
-        // detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
+        detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
         console.log("detailColorUrl:", detailColorUrl);
         console.log("multiple colors data_arr:", new_data_arr);
 
@@ -2624,13 +2563,7 @@ async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
       if (uploadResult.success && uploadResult.imageSrc) {
         // Update the image_path with the uploaded image URL
         updatedRow.image_path = uploadResult.imageSrc;
-        if(uploadResult.is_duplicate){
-          console.log(`✓ product is duplicate: ${uploadResult.imageSrc}`);
-          updatedRow.is_duplicate = uploadResult.is_duplicate;
-        }
-        else{
-          console.log(`✓ Image uploaded successfully: ${uploadResult.imageSrc}`);
-        }
+        console.log(`✓ Image uploaded successfully: ${uploadResult.imageSrc}`);
       } else {
         console.error(
           `❌ Failed to upload image: ${row.image_path}`,

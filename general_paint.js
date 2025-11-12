@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { json, text } = require("stream/consumers");
 const axios = require("axios");
+
 const FormData = require("form-data");
 const app = express();
 const PORT = 5005;
@@ -18,12 +19,14 @@ let multitone_page = null;
 let filters_obj = {};
 let _allmake = [];
 let _models_drop_down = [];
+let _check_duplicates = false;
 let outputFilePath = null;
 const xlsx = require("xlsx");
 let current_filter_csv = "paint/current_filter_csv.csv";
 let search_filter_param_csv = "paint/search_filter_param_csv.csv";
 let all_completed_filter_csv = "paint/all_completed_filter_csv.csv";
 const API_URL =
+  // "https://localhost/scratchrepaircar/upload_shopify.php";
   "https://development.hatinco.com/scratchrepaircar/upload_shopify.php";
 
 const MAX_RECURSION_DEPTH = 15;
@@ -101,7 +104,7 @@ async function loadUrl(retries = 1000) {
   }
 }
 
-async function loginPage(page) {
+async function loginPage_del(page) {
   const LOGIN_URL = "https://generalpaint.info/v2/site/login";
   const SEARCH_URL = "https://generalpaint.info/v2/search";
   const LOGOUT_SELECTOR = 'form[action*="/v2/site/logout"]';
@@ -157,6 +160,88 @@ async function loginPage(page) {
   }
 }
 
+async function loginPage(page, relogin = false) {
+  const LOGIN_URL = "https://generalpaint.info/v2/site/login";
+  const SEARCH_URL = "https://generalpaint.info/v2/search";
+  const LOGOUT_SELECTOR = 'form[action*="/v2/site/logout"]';
+  const LOGOUT_BUTTON = 'input[type="submit"][value="Logout (johnnybrownlee87)"]';
+  const usernameSelector = "#loginform-username";
+  const passwordSelector = "#loginform-password";
+  const submitSelector = "[name='login-button']";
+
+  // Check if we're already logged in
+  try {
+    // First ensure we're on a valid page
+    if (!page.url().startsWith("https://generalpaint.info/v2/")) {
+      await page.goto(SEARCH_URL);
+      await Promise.all([
+        page.waitForSelector(usernameSelector, { visible: true, timeout: 5000 }).catch(() => null),
+        page.waitForSelector(passwordSelector, { visible: true, timeout: 5000 }).catch(() => null),
+        page.waitForSelector(submitSelector, { visible: true, timeout: 5000 }).catch(() => null),
+      ]);
+    }
+
+    // Look for logout form to check if logged in
+    await page.waitForSelector(LOGOUT_SELECTOR, { timeout: 5000 });
+    
+    // If relogin is requested and we're already logged in, logout first
+    if (relogin) {
+      console.log("Relogin requested - logging out current session");
+      try {
+        // Click the logout button
+        await page.click(LOGOUT_BUTTON);
+        await page.waitForNavigation({ waitUntil: "networkidle", timeout: 10000 });
+        console.log("Logout successful");
+        
+        // Wait a bit before proceeding to login
+        await page.waitForTimeout(1000);
+      } catch (error) {
+        console.log("Logout failed, trying alternative method:", error.message);
+        // Alternative: Navigate directly to login page which should logout
+        await page.goto(LOGIN_URL);
+        await page.waitForSelector(usernameSelector, { timeout: 10000 });
+      }
+    } else {
+      console.log("Already logged in");
+      return;
+    }
+  } catch {
+    console.log("Not logged in - proceeding with login");
+  }
+
+  // Login process
+  try {
+    // Ensure we're on the login page
+    if (!page.url().includes('/site/login')) {
+      await page.goto(LOGIN_URL);
+    }
+
+    await page.waitForSelector(usernameSelector, { timeout: 10000 });
+    await page.fill(usernameSelector, "johnnybrownlee87");
+
+    await page.waitForSelector(passwordSelector, { timeout: 10000 });
+    await page.fill(passwordSelector, "7s1xpcnjqQ");
+
+    // Submit login form
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "networkidle", timeout: 15000 }),
+      page.click(submitSelector),
+    ]);
+
+    // Verify successful login
+    try {
+      await page.waitForSelector(LOGOUT_SELECTOR, { timeout: 5000 });
+      console.log("Login successful");
+    } catch {
+      console.error("Login verification failed - logout selector not found");
+      throw new Error('Login verification failed');
+    }
+  } catch (error) {
+    console.error("Login failed:", error);
+    throw error;
+  }
+}
+
 function getRandomNumber(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -189,6 +274,8 @@ app.get("/loadurl", async (req, res) => {
     let allowed_years = [];
     let allowed_makes = safeSplit(req.query.make);
     let allowed_models = safeSplit(req.query.model);
+    let check_duplicates = req.query.check_duplicates === true 
+    || req.query.check_duplicates === 'true';
 
     // Check if year is a range (e.g., "2024-2027" or "2027-2024")
     if (year && typeof year === "string" && year.includes("-")) {
@@ -225,15 +312,12 @@ app.get("/loadurl", async (req, res) => {
       plastic_parts: req.query.related_colors || 0,
       groupdesc: req.query.color_family || 0,
       effect: req.query.solid_effect || 0,
+      check_duplicates: check_duplicates,
     };
 
     const current_search = {
-      // outputFilePath: req.query.outputFilePath || null,
       make: allowed_makes.length > 0 ? allowed_makes[0] : null, // Use the processed array
       year: year,
-      // allowed_years: allowed_years,
-      // allowed_makes: allowed_makes,
-      // allowed_models: allowed_models,
       model: allowed_models.length > 0 ? allowed_models[0] : null, // Use the processed array
       plastic_parts: req.query.related_colors || 0,
       groupdesc: req.query.color_family || 0,
@@ -394,6 +478,7 @@ async function uploadSingle(row_values_obj) {
     price: 9.95,
     compare_price: 0.0,
     image_path: image_path,
+    check_duplicates: _check_duplicates,
   };
 
   form.append("brand", requestData.brand);
@@ -403,9 +488,31 @@ async function uploadSingle(row_values_obj) {
   form.append("paint_codes", requestData.paint_codes);
   form.append("price", requestData.price);
   form.append("compare_price", requestData.compare_price);
+  // form.append("check_duplicates", requestData.check_duplicates);
+  // console.log("check_duplicates", requestData.check_duplicates);
+  
 
   // ✅ CORRECT: This is the right way to append the file
   form.append("images[]", fs.createReadStream(image_path));
+//   form.append("images[]", fs.createReadStream(image_path), {
+//   filename: path.basename(image_path),
+//   contentType: 'image/png'
+// });
+  //   form.append("images[]", fs.readFileSync(image_path), {
+  //   filename: path.basename(image_path),
+  //   contentType: 'image/png' // or get mime type dynamically
+  // });
+
+
+    //   const imageBuffer = fs.readFileSync(image_path);
+    // const filename = path.basename(image_path);
+    // const blob = base64ToBlob(base64String, getContentType(image_path));
+    // form.append("images[]", blob, filename);
+    // form.append("images[]", imageBuffer, {
+    //   filename: filename,
+    //   contentType: getContentType(normalizedImagePath),
+    //   knownLength: imageBuffer.length
+    // });
 
   try {
     console.log("Uploading single file:", image_path);
@@ -448,6 +555,7 @@ async function uploadSingle(row_values_obj) {
 
     // Extract image src
     const src = parsedFiles?.[0]?.upload?.response?.image?.src || null;
+    const is_duplicate = parsedFiles?.[0]?.is_duplicate || false;
 
     if (!src) {
       const errorMsg = `server reported failure: ${JSON.stringify(
@@ -460,12 +568,12 @@ async function uploadSingle(row_values_obj) {
       });
       return {
         success: false,
-        error: "Upload failed - no image source returned",
+        error: "Product duplicate",
         imageSrc: null,
       };
     } else {
       console.log("Single upload successful:", image_path, "->", src);
-      return { success: true, imageSrc: src, error: null };
+      return { success: true, imageSrc: src,is_duplicate:is_duplicate, error: null };
     }
   } catch (err) {
     console.error("Single upload error for", image_path, err && err.message);
@@ -578,6 +686,7 @@ function generateCurlCommand(requestData, imagePath) {
     `-F "color_name=${requestData.color_name}"`,
     `-F "paint_codes=${requestData.paint_codes}"`,
     `-F "price=${requestData.price}"`,
+    `-F "check_duplicates=${requestData.check_duplicates}"`,
     `-F "compare_price=${requestData.compare_price || 0.0}"`,
     `-F "images[]=@${imagePath}"`,
   ].join(" \\\n  ");
@@ -747,80 +856,7 @@ async function findDropdownIndex(selector, text) {
     return 0; // Return 0 instead of throwing error
   }
 }
-async function scrapFormaulaDetailsData_dell(container) {
-  let sid = container.sid;
-  let id = container.familyId;
-  console.log("its container scrapFormaulaDetailsData : ", container);
-  let load_url =
-    "https://generalpaint.info/v2/search/family?id=" + id + "&sid=" + sid;
-  await new_page.goto(load_url);
-  randomWaitTime = getRandomNumber(3500, 5500);
-  await new_page.waitForTimeout(randomWaitTime);
-  await new_page.waitForSelector(".container.mt-4");
-  let color_paths = await downloadSearchFamilyCanvasImage(sid, id, new_page);
-  console.log("multiple colors : ", color_paths);
-  let colorCode = parsePaintInfo(container.content).code;
-  // let colorCode = parsePaintInfo(item.content).code;
-  const data = await new_page.evaluate(
-    ({ color_paths, colorCode }) => {
-      const results = [];
-      const formulaH2 = document.querySelector(".formula-h2");
-      const yearColorText = formulaH2 ? formulaH2.innerText.trim() : "";
-      const [year, color] = yearColorText
-        .split("\n")
-        .map((text) => text.trim());
-      const detailsElement = document.querySelector(".formula-info");
-      const details = detailsElement
-        ? detailsElement.getAttribute("data-original-title")
-        : "";
-      const trElements = document.querySelectorAll("tbody tr");
-      trElements.forEach((tr, index) => {
-        const toneElement = Array.from(tr.querySelectorAll(".formula-h1")).find(
-          (el) => el.innerText.includes("Tone")
-        )?.nextElementSibling;
-        const tone = toneElement ? toneElement.innerText.trim() : "";
-        let panelNoElement = Array.from(
-          tr.querySelectorAll(".formula-h1")
-        ).find((el) => el.innerText.includes("Panel no."))?.nextElementSibling;
-        let panelNo = panelNoElement ? panelNoElement.innerText.trim() : "";
-        if (!panelNo) {
-        }
-        console.log("panel no ", panelNo);
-        const canvasWrapper = tr.querySelector("#canvas_wrapper");
-        let bgColor = "";
 
-        if (canvasWrapper) {
-          const canvas = canvasWrapper.querySelector("canvas");
-          if (canvas) {
-            const ctx = canvas.getContext("2d");
-            const imageData = ctx.getImageData(0, 0, 1, 1).data; // Get pixel data from the top-left corner
-            bgColor = `rgba(${imageData[0]}, ${imageData[1]}, ${
-              imageData[2]
-            }, ${imageData[3] / 255})`;
-          } else {
-            bgColor = window.getComputedStyle(canvasWrapper).backgroundColor;
-          }
-        }
-        results.push({
-          year,
-          color,
-          colorCode,
-          tone,
-          panelNo,
-          details,
-          bgColor,
-          image_path: color_paths[index] || null, // Use the corresponding image path
-        });
-      });
-
-      return results;
-    },
-    { color_paths, colorCode }
-  ); // Pass color_paths as an argument to evaluate
-
-  return data;
-}
-// Function to manage Set size
 function manageSetSize() {
   if (processedCombinations.size > 5000) {
     // Convert Set to Array, remove first 3000 elements, then convert back to Set
@@ -832,11 +868,205 @@ function manageSetSize() {
     );
   }
 }
-
 async function scrapFormaulaDetailsData(container) {
+  const maxRetries = 5;
+  const retryDelay = 3000; // 3 seconds
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      let sid = container.sid;
+      let id = container.familyId;
+      let parse_paint_info = parsePaintInfo(container.content);
+      let colorCode = parse_paint_info.code;
+      let colorName = parse_paint_info.colorName;
+      let uniq_color = colorName + "-" + colorCode;
+      console.log("check color : ", uniq_color);
+      
+      if (!parse_paint_info || !parse_paint_info.colorName) {
+        console.log("No color name found in container content");
+        return [];
+      }
+      if (uniq_color) {
+        if (processedCombinations.has(uniq_color)) {
+          console.log(`Skipping duplicate color: ${uniq_color}`);
+          return []; // Return empty array for duplicates
+        }
+        processedCombinations.add(uniq_color);
+        console.log(
+          `Processing new uniq_color: ${uniq_color}. Current processed count: ${processedCombinations.size}`
+        );
+      } else {
+        console.log("No STANDARD color found");
+        return [];
+      }
+
+      let load_url =
+        "https://generalpaint.info/v2/search/family?id=" + id + "&sid=" + sid;
+      await new_page.goto(load_url);
+      randomWaitTime = getRandomNumber(3500, 5500);
+      await new_page.waitForTimeout(randomWaitTime);
+      await new_page.waitForSelector(".container.mt-4");
+
+      // Get panel number first without creating images
+      const panelNo = await new_page.evaluate(() => {
+        const trElements = document.querySelectorAll("tbody tr");
+
+        // Find the first row with "STANDARD" tone
+        for (let index = 0; index < trElements.length; index++) {
+          const tr = trElements[index];
+          const toneElement = Array.from(tr.querySelectorAll(".formula-h1")).find(
+            (el) => el.innerText.includes("Tone")
+          )?.nextElementSibling;
+          const tone = toneElement ? toneElement.innerText.trim() : "";
+
+          // Only process if tone is "STANDARD"
+          if (tone.toLowerCase() === "standard") {
+            let panelNoElement = Array.from(
+              tr.querySelectorAll(".formula-h1")
+            ).find((el) => el.innerText.includes("Panel no."))?.nextElementSibling;
+            let panelNo = panelNoElement ? panelNoElement.innerText.trim() : "";
+            return panelNo;
+          }
+        }
+        return null;
+      });
+
+      // Only create images if it's not a duplicate
+      let color_paths = await downloadSearchFamilyCanvasImage(sid, id, new_page);
+
+      const data = await new_page.evaluate(
+        ({ color_paths, colorCode, panelNo }) => {
+          const results = [];
+          const formulaH2 = document.querySelector(".formula-h2");
+          const yearColorText = formulaH2 ? formulaH2.innerText.trim() : "";
+          const [year, color] = yearColorText
+            .split("\n")
+            .map((text) => text.trim());
+          const detailsElement = document.querySelector(".formula-info");
+          const details = detailsElement
+            ? detailsElement.getAttribute("data-original-title")
+            : "";
+          const trElements = document.querySelectorAll("tbody tr");
+
+          // Find the specific row with our panel number
+          for (let index = 0; index < trElements.length; index++) {
+            const tr = trElements[index];
+            const toneElement = Array.from(tr.querySelectorAll(".formula-h1")).find(
+              (el) => el.innerText.includes("Tone")
+            )?.nextElementSibling;
+            const tone = toneElement ? toneElement.innerText.trim() : "";
+
+            let currentPanelNoElement = Array.from(
+              tr.querySelectorAll(".formula-h1")
+            ).find((el) => el.innerText.includes("Panel no."))?.nextElementSibling;
+            let currentPanelNo = currentPanelNoElement
+              ? currentPanelNoElement.innerText.trim()
+              : "";
+
+            // Only process if tone is "STANDARD" and panel number matches
+            if (tone.toLowerCase() === "standard" && currentPanelNo === panelNo) {
+              const canvasWrapper = tr.querySelector("#canvas_wrapper");
+              let bgColor = "";
+
+              if (canvasWrapper) {
+                const canvas = canvasWrapper.querySelector("canvas");
+                if (canvas) {
+                  const ctx = canvas.getContext("2d");
+                  const imageData = ctx.getImageData(0, 0, 1, 1).data;
+                  bgColor = `rgba(${imageData[0]}, ${imageData[1]}, ${
+                    imageData[2]
+                  }, ${imageData[3] / 255})`;
+                } else {
+                  bgColor = window.getComputedStyle(canvasWrapper).backgroundColor;
+                }
+              }
+
+              results.push({
+                year,
+                color,
+                colorCode,
+                tone,
+                panelNo: currentPanelNo,
+                details,
+                bgColor,
+                image_path: color_paths[index] || null,
+              });
+
+              break;
+            }
+          }
+
+          return results;
+        },
+        { color_paths, colorCode, panelNo }
+      );
+
+      // FIXED: Check if data exists and has items
+      if (data && data.length > 0) {
+        let evaluate_color = data[0].color + "-" + data[0].colorCode;
+        console.log("color from evaluate: ", evaluate_color);
+        
+        // Optional: Verify the color matches what we expected
+        if (evaluate_color !== uniq_color) {
+          console.warn(`Color mismatch: expected ${uniq_color}, got ${evaluate_color}`);
+        }
+      } else {
+        console.log("No data found for color: ", uniq_color);
+        // Remove from processed combinations since no data was found
+        processedCombinations.delete(uniq_color);
+      }
+
+      return data;
+
+    } catch (error) {
+      console.error(`Attempt ${attempt}/${maxRetries} failed:`, error.message);
+      
+      // If this was the last attempt, return empty array
+      if (attempt === maxRetries) {
+        console.error(`All ${maxRetries} attempts failed for container:`, container);
+        // Clean up processed combinations on final failure
+        if (uniq_color) {
+          processedCombinations.delete(uniq_color);
+        }
+        return [];
+      }
+      
+      // Wait before retrying
+      console.log(`Waiting ${retryDelay}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      
+      // Optional: Add some random variation to the delay
+      const jitter = Math.random() * 1000; // 0-1 second jitter
+      await new Promise(resolve => setTimeout(resolve, jitter));
+    }
+  }
+}
+async function scrapFormaulaDetailsData_del(container) {
   let sid = container.sid;
   let id = container.familyId;
-  console.log("its container scrapFormaulaDetailsData : ", container);
+  let parse_paint_info = parsePaintInfo(container.content);
+  let colorCode = parse_paint_info.code;
+  let colorName = parse_paint_info.colorName;
+  let uniq_color = colorName + "-" + colorCode;
+  console.log("check color : ", uniq_color);
+    // Check for duplicates using panelNo BEFORE creating images
+  if (uniq_color) {
+    if (processedCombinations.has(uniq_color)) {
+      console.log(`Skipping duplicate color: ${uniq_color}`);
+      return []; // Return empty array for duplicates
+    }
+
+    // Add to processed combinations and manage size
+    processedCombinations.add(uniq_color);
+    console.log(
+      `Processing new uniq_color: ${uniq_color}. Current processed count: ${processedCombinations.size}`
+    );
+  } else {
+    console.log("No STANDARD color found");
+    return [];
+  }
+
+  // console.log("its container scrapFormaulaDetailsData : ", container);
 
   // First, check if we can get the panel number without creating images
   let load_url =
@@ -870,27 +1100,14 @@ async function scrapFormaulaDetailsData(container) {
     return null;
   });
 
-  // Check for duplicates using panelNo BEFORE creating images
-  if (panelNo) {
-    if (processedCombinations.has(panelNo)) {
-      console.log(`Skipping duplicate panel number: ${panelNo}`);
-      return []; // Return empty array for duplicates
-    }
 
-    // Add to processed combinations and manage size
-    processedCombinations.add(panelNo);
-    console.log(
-      `Processing new panel number: ${panelNo}. Current processed count: ${processedCombinations.size}`
-    );
-  } else {
-    console.log("No STANDARD tone found with panel number");
-    return [];
-  }
 
   // Only create images if it's not a duplicate
   let color_paths = await downloadSearchFamilyCanvasImage(sid, id, new_page);
-  console.log("multiple colors : ", color_paths);
-  let colorCode = parsePaintInfo(container.content).code;
+  // console.log("multiple colors : ", color_paths);
+  // let colorCode = parsePaintInfo(container.content).code;
+
+
 
   const data = await new_page.evaluate(
     ({ color_paths, colorCode, panelNo }) => {
@@ -923,7 +1140,7 @@ async function scrapFormaulaDetailsData(container) {
 
         // Only process if tone is "STANDARD" and panel number matches
         if (tone.toLowerCase() === "standard" && currentPanelNo === panelNo) {
-          console.log("panel no ", currentPanelNo);
+          // console.log("panel no ", currentPanelNo);
           const canvasWrapper = tr.querySelector("#canvas_wrapper");
           let bgColor = "";
 
@@ -959,7 +1176,8 @@ async function scrapFormaulaDetailsData(container) {
     },
     { color_paths, colorCode, panelNo }
   );
-
+          let evaluate_color = results[0].color + "-" + results[0].colorCode;
+        console.log("color from evaluate: ", evaluate_color);
   return data;
 }
 
@@ -1075,7 +1293,8 @@ async function setSearchFilters(selected_page, description = null) {
     try {
       console.log("setSearchFilters filters", filters);
 
-      let randomWaitTime = getRandomNumber(1000, 1500);
+      let randomWaitTime = getRandomNumber(2500, 3500);
+      await selected_page.waitForTimeout(randomWaitTime);
 
       await selected_page.waitForSelector("#make_dropdown", { timeout: 5000 });
 
@@ -1204,6 +1423,7 @@ const getCurrentPageNumber = async (nextpage) => {
 };
 const goToNextPage = async (page) => {
   try {
+    console.log("in goToNextPage");
     // Get the active page item
     const activePageItem = await page.$(".pagination li.active");
     if (!activePageItem) {
@@ -1247,7 +1467,7 @@ const goToNextPage = async (page) => {
     // Verify we have content on the new page
     // await page.waitForSelector('#digital_formula', { timeout: 10000 });
     await has_digital_formula(page, "#digital_formula");
-
+    console.log('page changed');
     return true;
   } catch (error) {
     console.error("Error navigating to next page:", error.message);
@@ -1911,6 +2131,7 @@ async function loadFromPage(res) {
   let related_colors_drop_down_index = 0;
   let color_family_drop_down_index = 0;
   let solid_effect_drop_down_index = 0;
+  _check_duplicates = obj_search_filter_param_csv.check_duplicates;
   if (lastRow) {
     make_drop_down_index = parseInt(lastRow[0]);
     year_drop_down_index = parseInt(lastRow[2]);
@@ -2153,10 +2374,26 @@ async function loadFromPage(res) {
 
 async function recoverPage() {
   try {
-    await page.reload();
-    //   await page.waitForSelector('#plastic_parts', { timeout: 60000 });
+    // await page.reload();
+    // await multitone_page.reload();
+    console.log('Starting Pages recovery');
+    console.log('Relogin search page');
+
+    await loginPage(page,true);
+    console.log('Setting filter search page');
+
+    await setSearchFilters(page);
+    console.log('Relogin multitone page');
+
+    await loginPage(multitone_page,true);
+    console.log('Setting filter multitone page');
+
+    await setSearchFilters(multitone_page);
+    console.log('Reload new page');
+
     await new_page.reload();
-    //   await new_page.waitForSelector('#plastic_parts', { timeout: 60000 });
+    console.log('End Pages recovery');
+
     let randomWaitTime = getRandomNumber(5500, 7500);
     await page.waitForTimeout(randomWaitTime);
     return true;
@@ -2193,35 +2430,43 @@ async function retryWithBackoff(
   throw lastError;
 }
 
-async function has_digital_formula(formula_page, selector) {
+async function has_digital_formula_del(formula_page, selector) {
   let retryCount = 0;
   let MAX_RETRIES = 5;
   let ERROR_MESSAGE =
     "We could not find any formulas. Try to modify your search.";
   while (retryCount < MAX_RETRIES) {
     try {
-      let randomWaitTime = getRandomNumber(1500, 2500);
-      await formula_page.waitForTimeout(randomWaitTime);
-      let errorAlert = await formula_page.$(".alert.alert-danger");
-      if (errorAlert) {
-        let errorText = await formula_page.evaluate(
-          (el) => el.textContent.trim(),
-          errorAlert
-        );
-        if (errorText.includes(ERROR_MESSAGE)) {
-          console.log("Error message detected - no formulas found");
-          return false;
+        await formula_page.waitForNavigation({ waitUntil: 'networkidle0' });
+        // let randomWaitTime = getRandomNumber(5000, 7500);
+        // await formula_page.waitForTimeout(randomWaitTime);
+        
+        let formula_page_selector = await Promise.race([
+          formula_page.waitForSelector(selector, { timeout: 10000 }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout")), 10000)
+          ),
+        ]);
+        if (formula_page_selector) {
+          return true;
         }
+        
+        let errorAlert = await formula_page.waitForSelector('.alert.alert-danger', { 
+              timeout: 10000 
+          }).catch(() => null);
+        // let errorAlert = await formula_page.$(".alert.alert-danger");
+        if (errorAlert) {
+          let errorText = await formula_page.evaluate(
+            (el) => el.textContent.trim(),
+            errorAlert
+          );
+          if (errorText.includes(ERROR_MESSAGE)) {
+            console.log("Error message detected - no formulas found");
+            return false;
+          }
       }
-
-      await Promise.race([
-        formula_page.waitForSelector(selector, { timeout: 10000 }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout")), 10000)
-        ),
-      ]);
-      return true; // Return immediately if found
-    } catch (error) {
+  }
+  catch (error) {
       retryCount++;
       console.log(
         `Retry ${retryCount}/${MAX_RETRIES} for selector "${selector}"...`
@@ -2233,13 +2478,100 @@ async function has_digital_formula(formula_page, selector) {
       }
     }
   }
-
-  console.log(
-    `Selector "${selector}" not found in page after ${MAX_RETRIES} attempts`
+    console.log(
+    `Server is not responding taking timeout for 30 mins for server to revive`
   );
+        await formula_page.waitForTimeout(1800000);
+        return has_digital_formula(formula_page, selector);
+
+}
+async function has_digital_formula(formula_page, selector) {
+  let retryCount = 0;
+  let MAX_RETRIES = 5;
+  let ERROR_MESSAGE = "We could not find any formulas. Try to modify your search.";
+  
+  while (retryCount < MAX_RETRIES) {
+    try {
+      await formula_page.waitForNavigation({ waitUntil: 'networkidle0' });
+      
+      // Race between finding the selector and timing out
+      const result = await Promise.race([
+        // Option 1: Look for the digital formula (success case)
+        formula_page.waitForSelector(selector, { timeout: 10000 }).then(() => 'FORMULA_FOUND'),
+        
+        // Option 2: Look for error message (failure case)
+        formula_page.waitForSelector('.alert.alert-danger', { timeout: 10000 })
+          .then(async (errorAlert) => {
+            if (errorAlert) {
+              let errorText = await formula_page.evaluate(
+                (el) => el.textContent.trim(),
+                errorAlert
+              );
+              if (errorText.includes(ERROR_MESSAGE)) {
+                return 'ERROR_FOUND';
+              }
+            }
+            return 'NEITHER_FOUND';
+          }),
+          
+        // Option 3: Overall timeout
+        new Promise((resolve) => 
+          setTimeout(() => resolve('TIMEOUT'), 10000)
+        )
+      ]);
+
+      console.log(`Search result: ${result}`);
+      
+      // Handle the different cases
+      switch (result) {
+        case 'FORMULA_FOUND':
+          return true;
+        case 'ERROR_FOUND':
+          console.log("Error message detected - no formulas found");
+          return false;
+        case 'NEITHER_FOUND':
+        case 'TIMEOUT':
+          // Neither selector found - this might be server stuck
+          console.log("Neither formula nor error found - might be server issue");
+          // Don't return, let it retry or eventually wait 30 minutes
+          break;
+      }
+      
+      // If we get here, it means neither selector was found within timeout
+      // Continue to retry logic below
+      
+    } catch (error) {
+      console.log(`Error in has_digital_formula: ${error.message}`);
+      // Don't immediately retry for navigation timeouts, continue to retry logic
+    }
+    
+    // If we get here, we need to retry
+    retryCount++;
+    
+    if (retryCount < MAX_RETRIES) {
+      console.log(`Retry ${retryCount}/${MAX_RETRIES} for selector "${selector}"...`);
+      await loginPage(formula_page);
+      await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
+    } else {
+      // Max retries reached - wait 30 minutes and try again
+      console.log(`Server is not responding. Waiting 30 minutes for server to revive...`);
+      // await formula_page.waitForTimeout(1800000); // 30 minutes
+        await formula_page.waitForTimeout(15000);
+        console.log("Timeout for 15 seconds loggin in again");
+        // await formula_page.waitForTimeout(1800000);
+        await recoverPage(formula_page);
+      ////////
+      
+      // Reset retry count and continue the loop
+      retryCount = 0;
+      console.log("30 minute wait completed, retrying...");
+    }
+  }
+  
+  // This should never be reached due to the reset logic above
   return false;
 }
-
+// 2005 man
 async function scrapDataFromPages() {
   let data_arr = [];
   let descriptionStack = [];
@@ -2247,6 +2579,12 @@ async function scrapDataFromPages() {
   currentRecursionDepth = 0;
   visitedMultitones.clear();
   await setSearchFilters(page);
+  let page_num=0;
+  
+  let randomWaitTime = getRandomNumber(2500, 3500);
+  await page.waitForTimeout(randomWaitTime);
+
+  await page.waitForSelector("#make_dropdown", { timeout: 5000 });
 
   console.log("scrapDataFromPages filters : ", filters_obj);
   // return;
@@ -2254,174 +2592,179 @@ async function scrapDataFromPages() {
     let containers_details = null;
     try {
       // Wait for the selector with a timeout of 10 seconds
-      if (!(await has_digital_formula(page, "#digital_formula"))) {
-        hasNextPage = false;
-        break;
-      }
+        const hasFormula = await has_digital_formula(page, "#digital_formula");
+        if (hasFormula === false) {
+          // Explicit false means error message was found - no formulas
+          console.log("No formulas found for current search criteria");
+          hasNextPage = false;
+          break;
+        } 
+        page_num++;
+        console.log("page_num : ", page_num);
 
-      containers_details = await page.$$eval(
-        "#digital_formula > .root",
-        (elements, data) => {
-          const { filters, models } = data; // destructure the wrapped object
+        containers_details = await page.$$eval(
+          "#digital_formula > .root",
+          (elements, data) => {
+            const { filters, models } = data; // destructure the wrapped object
 
-          return elements.map((el) => {
-            return {
-              familyId: el.getAttribute("family_id"),
-              sid: el.getAttribute("sid"),
-              make: el.getAttribute("make"),
-              model: models?.[filters?.model] ?? "",
-              description: el.getAttribute("desc"),
-              url: el.getAttribute("url"),
-              content: el.innerText.trim(),
-            };
-          });
-        },
-        { filters: filters_obj, models: _models_drop_down } // wrap both into one object
-      );
-
-      console.log("Found containers:", containers_details.length);
-
-      for (let i = 0; i < containers_details.length; i++) {
-        console.log("Processing container", i);
-        const container = containers_details[i];
-
-        // Get fresh handles for current container
-        const containerHandles = await page.$$("#digital_formula > .root");
-        if (i >= containerHandles.length) {
-          console.error("Container handle index out of bounds");
-          continue;
-        }
-
-        const currentHandle = containerHandles[i];
-        let hasMultitoneAccess = await currentHandle.$(
-          ".formula-multitone-access"
-        );
-        let extracted_data = {};
-
-        if (hasMultitoneAccess) {
-          if (
-            visitedMultitones.size < MAX_VISITED_ENTRIES &&
-            !visitedMultitones.has(container.description)
-          ) {
-            console.log("Multitone found in container:", container.description);
-            descriptionStack.push({
-              description: container.description,
-              depth: currentRecursionDepth + 1,
+            return elements.map((el) => {
+              return {
+                familyId: el.getAttribute("family_id"),
+                sid: el.getAttribute("sid"),
+                make: el.getAttribute("make"),
+                model: models?.[filters?.model] ?? "",
+                description: el.getAttribute("desc"),
+                url: el.getAttribute("url"),
+                content: el.innerText.trim(),
+              };
             });
-            visitedMultitones.add(container.description);
-            console.log("descriptionStack:", descriptionStack);
-          }
-        } else {
-          console.log(
-            "Direct data found in container:",
-            JSON.stringify(container)
-          );
-          const buttons = await page.$$(
-            '#digital_formula > .root button[data-original-title="Color Information"]'
-          );
-          extracted_data = await scrapDataFromList(
-            page,
-            container,
-            buttons,
-            i,
-            data_arr
-          );
-          console.log("extracted_data here :", extracted_data);
-          await saveToExcel(extracted_data, "paint/sheets/paint.csv");
-        }
-        console.log("Saved container data:", container.description);
-      }
-      while (descriptionStack.length > 0) {
-        const { description, depth } = descriptionStack.pop();
-        currentRecursionDepth = depth;
+          },
+          { filters: filters_obj, models: _models_drop_down } // wrap both into one object
+        );
 
-        if (currentRecursionDepth > MAX_RECURSION_DEPTH) {
-          console.warn(
-            "Maximum recursion depth reached, skipping:",
-            description
-          );
-          continue;
-        }
+        console.log("Found containers:", containers_details.length);
 
-        await setSearchFilters(multitone_page, description);
+        for (let i = 0; i < containers_details.length; i++) {
+          console.log("Processing container", i);
+          const container = containers_details[i];
 
-        let hasNextMultiPage = true;
-        while (hasNextMultiPage) {
-          // Wait for containers to load in multitone page
-          if (
-            !(await has_digital_formula(multitone_page, "#digital_formula"))
-          ) {
-            hasNextMultiPage = false;
-            break;
+          // Get fresh handles for current container
+          const containerHandles = await page.$$("#digital_formula > .root");
+          if (i >= containerHandles.length) {
+            console.error("Container handle index out of bounds");
+            continue;
           }
 
-          // Get buttons and containers from multitone page
-          const buttons = await multitone_page.$$(
-            '#digital_formula > .root button[data-original-title="Color Information"]'
+          const currentHandle = containerHandles[i];
+          let hasMultitoneAccess = await currentHandle.$(
+            ".formula-multitone-access"
           );
-          const multitoneContainers = await multitone_page.$$eval(
-            "#digital_formula > .root",
-            (elements, data) => {
-              const { filters, models } = data;
+          let extracted_data = {};
 
-              return elements.map((el) => {
-                const isMultitone =
-                  el.querySelector(".formula-multitone-access") !== null;
-
-                return {
-                  familyId: el.getAttribute("family_id"),
-                  sid: el.getAttribute("sid"),
-                  make: el.getAttribute("make"),
-                  model: models?.[filters?.model] ?? "",
-                  description: el.getAttribute("desc"),
-                  url: el.getAttribute("url"),
-                  content: el.innerText.trim(),
-                  isMultitone: isMultitone,
-                };
-              });
-            },
-            { filters: filters_obj, models: _models_drop_down } // ✅ wrap into single object
-          );
-
-          // Process each container in multitone page
-          for (let j = 0; j < multitoneContainers.length; j++) {
-            const mtContainer = multitoneContainers[j];
-            let currentPageNumber = await getCurrentPageNumber(page); // Implement this function
-
-            // Save to text file
-            const stateData = `Current Page: ${currentPageNumber}\nFilters: ${JSON.stringify(
-              filters_obj
-            )}\n`;
-            const multitoneFile = "multitone_filter.txt";
-            if (mtContainer.isMultitone) {
+          if (hasMultitoneAccess) {
+            if (
+              visitedMultitones.size < MAX_VISITED_ENTRIES &&
+              !visitedMultitones.has(container.description)
+            ) {
+              console.log("Multitone found in container:", container.description);
               descriptionStack.push({
-                description: mtContainer.description,
+                description: container.description,
                 depth: currentRecursionDepth + 1,
               });
-              visitedMultitones.add(mtContainer.description);
-              console.log("found one more multitone");
-              console.log(multitoneFile, stateData);
-            } else {
-              console.log("found direct data in  multitone");
-              // continue;
-              extracted_data = await scrapDataFromList(
-                multitone_page,
-                mtContainer,
-                buttons,
-                j,
-                data_arr
-              );
-              // await fs.promises.writeFile(multitoneFile, stateData);
-
-              await saveToExcel(extracted_data, "paint/sheets/paint.csv");
+              visitedMultitones.add(container.description);
+              console.log("descriptionStack:", descriptionStack);
             }
+          } else {
+            console.log(
+              "Direct data found in container:",
+              JSON.stringify(container)
+            );
+            const buttons = await page.$$(
+              '#digital_formula > .root button[data-original-title="Color Information"]'
+            );
+            extracted_data = await scrapDataFromList(
+              page,
+              container,
+              buttons,
+              i,
+              data_arr
+            );
+            console.log("extracted_data here :", extracted_data);
+            await saveToExcel(extracted_data, "paint/sheets/paint.csv");
+          }
+          console.log("Saved container data:", container.description);
+        }
+        while (descriptionStack.length > 0) {
+          const { description, depth } = descriptionStack.pop();
+          currentRecursionDepth = depth;
+
+          if (currentRecursionDepth > MAX_RECURSION_DEPTH) {
+            console.warn(
+              "Maximum recursion depth reached, skipping:",
+              description
+            );
+            continue;
           }
 
-          hasNextMultiPage = await goToNextPage(multitone_page);
-        }
-      }
+          await setSearchFilters(multitone_page, description);
 
-      hasNextPage = await goToNextPage(page);
+          let hasNextMultiPage = true;
+          while (hasNextMultiPage) {
+            // Wait for containers to load in multitone page
+            if (
+              !(await has_digital_formula(multitone_page, "#digital_formula"))
+            ) {
+              hasNextMultiPage = false;
+              break;
+            }
+
+            // Get buttons and containers from multitone page
+            const buttons = await multitone_page.$$(
+              '#digital_formula > .root button[data-original-title="Color Information"]'
+            );
+            const multitoneContainers = await multitone_page.$$eval(
+              "#digital_formula > .root",
+              (elements, data) => {
+                const { filters, models } = data;
+
+                return elements.map((el) => {
+                  const isMultitone =
+                    el.querySelector(".formula-multitone-access") !== null;
+
+                  return {
+                    familyId: el.getAttribute("family_id"),
+                    sid: el.getAttribute("sid"),
+                    make: el.getAttribute("make"),
+                    model: models?.[filters?.model] ?? "",
+                    description: el.getAttribute("desc"),
+                    url: el.getAttribute("url"),
+                    content: el.innerText.trim(),
+                    isMultitone: isMultitone,
+                  };
+                });
+              },
+              { filters: filters_obj, models: _models_drop_down } // ✅ wrap into single object
+            );
+
+            // Process each container in multitone page
+            for (let j = 0; j < multitoneContainers.length; j++) {
+              const mtContainer = multitoneContainers[j];
+              let currentPageNumber = await getCurrentPageNumber(page); // Implement this function
+
+              // Save to text file
+              const stateData = `Current Page: ${currentPageNumber}\nFilters: ${JSON.stringify(
+                filters_obj
+              )}\n`;
+              const multitoneFile = "multitone_filter.txt";
+              if (mtContainer.isMultitone) {
+                descriptionStack.push({
+                  description: mtContainer.description,
+                  depth: currentRecursionDepth + 1,
+                });
+                visitedMultitones.add(mtContainer.description);
+                console.log("found one more multitone");
+                console.log(multitoneFile, stateData);
+              } else {
+                console.log("found direct data in  multitone");
+                // continue;
+                extracted_data = await scrapDataFromList(
+                  multitone_page,
+                  mtContainer,
+                  buttons,
+                  j,
+                  data_arr
+                );
+                // await fs.promises.writeFile(multitoneFile, stateData);
+
+                await saveToExcel(extracted_data, "paint/sheets/paint.csv");
+              }
+            }
+
+            hasNextMultiPage = await goToNextPage(multitone_page);
+          }
+        }
+
+        hasNextPage = await goToNextPage(page);
     } catch (error) {
       if (error.message === "Timeout") {
         console.log("Timeout: #digital_formula not found within 10 seconds");
@@ -2456,21 +2799,31 @@ function parsePaintInfo(content) {
 
   return {
     code: colorCode,
-    colorName: lines[1] || null,
-    years: lines[2] || null,
+    colorName: lines[1] || '',
+    years: lines[2] || '',
     brand: firstLine.replace(/\d+$/, "").trim(),
   };
 }
 
 async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
+    let  detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
+
+    write_response.write(
+    `data: ${JSON.stringify({
+      type: "processing_new_row",
+      url: detailColorUrl,
+    })}\n\n`
+  );
   let new_data_arr = [];
   const containerKey = `${container.familyId}-${container.sid}`;
-  if (processedRecords.has(containerKey)) {
+  if (await processedRecords.has(containerKey)) {
     console.log(`Skipping already processed container: ${containerKey}`);
     return [];
   }
+  else{
+    await processedRecords.add(containerKey);
+  }
   let combinedData = {};
-  let detailColorUrl = "";
   try {
     buttons = await listpage.$$(
       '#digital_formula > .root button[data-original-title="Color Information"]'
@@ -2497,7 +2850,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
           new_data_arr.push(combinedData);
         }
         infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
-        detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
+        // detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
         console.log("detailColorUrl:", detailColorUrl);
         console.log("multiple colors data_arr:", new_data_arr);
 
@@ -2539,8 +2892,8 @@ const escapeCsvValue = (value) => {
 };
 
 async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
-  if (!dataArray) {
-    return;
+  if (!dataArray?.length) {
+      return;
   }
   // const makeDropdown = await get_make_drop_down();
   const filePath = "paint/sheets/";
@@ -2563,7 +2916,13 @@ async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
       if (uploadResult.success && uploadResult.imageSrc) {
         // Update the image_path with the uploaded image URL
         updatedRow.image_path = uploadResult.imageSrc;
-        console.log(`✓ Image uploaded successfully: ${uploadResult.imageSrc}`);
+        if(uploadResult.is_duplicate){
+          console.log(`✓ product is duplicate: ${uploadResult.imageSrc}`);
+          updatedRow.is_duplicate = uploadResult.is_duplicate;
+        }
+        else{
+          console.log(`✓ Image uploaded successfully: ${uploadResult.imageSrc}`);
+        }
       } else {
         console.error(
           `❌ Failed to upload image: ${row.image_path}`,
