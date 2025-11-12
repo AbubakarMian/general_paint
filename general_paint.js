@@ -20,6 +20,7 @@ let moreinfo_page = null;
 let _page_number = 1;
 let _multitone_page_number = 1;
 let filters_obj = {};
+let obj_search_filter_param_csv = {};
 let _allmake = [];
 let _models_drop_down = [];
 let _check_duplicates = false;
@@ -2055,6 +2056,10 @@ async function get_make_drop_down() {
 }
 
 async function get_model_drop_down(selected_page = null, filters) {
+  if (obj_search_filter_param_csv?.allowed_models?.length < 1){
+     _models_drop_down = ["All Models"];
+    return _models_drop_down;
+  }
   let randomWaitTime = getRandomNumber(2500, 3500);
   await selected_page.waitForTimeout(randomWaitTime);
   console.log("now selecting model drop down");
@@ -2418,7 +2423,7 @@ async function loadFromPage(res) {
   let color_family_drop_down = await get_color_family_drop_down();
   let solid_effect_drop_down = await get_solid_effect_drop_down();
   let lastRow = readLastRowFromCsv(current_filter_csv);
-  let obj_search_filter_param_csv = {
+  obj_search_filter_param_csv = {
     allowed_years: [],
     allowed_makes: [],
     allowed_models: [],
@@ -2517,17 +2522,10 @@ async function loadFromPage(res) {
       year_drop_down_index++
     ) {
       const currentYear = year_drop_down[year_drop_down_index];
-      if (obj_search_filter_param_csv?.allowed_years?.length > 0) {
-        const currentYearNumber = Number(currentYear);
 
-        if (
-          !obj_search_filter_param_csv.allowed_years.includes(currentYearNumber)
-        ) {
-          continue;
-        }
-      }
 
-      filters_obj = {
+      if (obj_search_filter_param_csv?.allowed_models?.length > 0) {
+        filters_obj = {
         description: null,
         year: 0,
         make: make_drop_down_index,
@@ -2537,27 +2535,32 @@ async function loadFromPage(res) {
         groupdesc: null,
         effect: null,
       };
-      // await setSearchFilters(page);
-      //   await page.waitForFunction(
-      //     () => {
-      //       const modelSelect = document.querySelector("#models_dropdown");
-      //       return modelSelect && modelSelect.options.length > 1; // More than just empty option
-      //     },
-      //     { timeout: 10000 }
-      //   );
-      //   console.log(
-      //   "all models : ",
-      //   _models_drop_down
-      // );
+      await setSearchFilters(page);
+        await page.waitForFunction(
+          () => {
+            const modelSelect = document.querySelector("#models_dropdown");
+            return modelSelect && modelSelect.options.length > 1; // More than just empty option
+          },
+          { timeout: 10000 }
+        );
+      }
+      // else{
+      //   _models_drop_down = ["All Models"];
+      // }
+      
+        console.log(
+        "all models : ",
+        _models_drop_down
+      );
       for (
-        // let adjusted_index = 1;
-        // adjusted_index <= _models_drop_down.length;
-        // adjusted_index++
-        let adjusted_index = 0;
-        adjusted_index < 1;
+        let adjusted_index = 1;
+        adjusted_index <= _models_drop_down.length;
         adjusted_index++
+        // let adjusted_index = 0;
+        // adjusted_index < 1;
+        // adjusted_index++
       ) {
-        // let model_drop_down_index = adjusted_index % _models_drop_down.length;
+        let model_drop_down_index = adjusted_index % _models_drop_down.length;
         if (obj_search_filter_param_csv?.allowed_models?.length > 0) {
           if (
             !obj_search_filter_param_csv.allowed_models.includes(
@@ -3164,25 +3167,32 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
         const id = urlAndIdMatch[2];
         manageSetSize();
         let scrap_details = await scrapFormaulaDetailsData(container);
-        for (const scrap_detail of scrap_details) {// since this will always return single record
-          combinedData = { ...container, ...scrap_detail };
-        }
-        let scrap_more_details = await scrapColorInfoData(id);
-        combinedData = { ...scrap_more_details, ...combinedData };
-        // combinedData = { ...combinedData, ...scrap_more_details };
-        // Alternative approach: Only add missing keys from scrap_more_details
-      // combinedData = {
-      //   ...combinedData,
-      //   ...Object.fromEntries(
-      //     Object.entries(scrap_more_details).filter(([key]) => !(key in combinedData))
-      //   )
-        new_data_arr.push(combinedData);
-        infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
-        // detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
-        console.log("detailColorUrl:", detailColorUrl);
-        console.log("multiple colors data_arr:", new_data_arr);
-        console.log("infoColorUrl:", infoColorUrl);
+        let new_data_found = scrap_details.length>0;
+        if(new_data_found){
+          for (const scrap_detail of scrap_details) {// since this will always return single record
+            combinedData = { ...container, ...scrap_detail };
+          }
+          let scrap_more_details = await scrapColorInfoData(id);
+          combinedData = { ...scrap_more_details, ...combinedData };
+            // combinedData = { ...combinedData, ...scrap_more_details };
+            // Alternative approach: Only add missing keys from scrap_more_details
+          // combinedData = {
+          //   ...combinedData,
+          //   ...Object.fromEntries(
+          //     Object.entries(scrap_more_details).filter(([key]) => !(key in combinedData))
+          //   )
+          new_data_arr.push(combinedData);
+          infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
+          // detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
+          console.log("detailColorUrl:", detailColorUrl);
+          console.log("multiple colors data_arr:", new_data_arr);
+          console.log("infoColorUrl:", infoColorUrl);
 
+        }
+        else{
+          console.log("old data found for this container detailColorUrl : ",detailColorUrl);
+        }
+        
         // await scrapColorInfoData(id);
         // infoColorUrl = 'https://generalpaint.info/v2/search/formula-info?id=107573';
         // detailColorUrl = 'https://generalpaint.info/v2/search/family?id=67746&sid=67d00e248ae305.41320823';
