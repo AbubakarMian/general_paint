@@ -16,6 +16,9 @@ let context;
 let page = null;
 let new_page = null;
 let multitone_page = null;
+let moreinfo_page = null;
+let _page_number = 1;
+let _multitone_page_number = 1;
 let filters_obj = {};
 let _allmake = [];
 let _models_drop_down = [];
@@ -75,6 +78,8 @@ async function loadUrl(retries = 1000) {
 
       multitone_page = await context.newPage();
       await multitone_page.goto("https://generalpaint.info/v2/site/login");
+      moreinfo_page = await context.newPage();
+      await moreinfo_page.goto("https://generalpaint.info/v2/site/login");
       return true;
     } catch (err) {
       if (browser && attempt % 5 === 0) {
@@ -471,7 +476,10 @@ async function uploadSingle(row_values_obj) {
   // Store request data for logging
   const requestData = {
     brand: row_values_obj.make,
-    models: row_values_obj.model,
+    models: row_values_obj.models.length>0?row_values_obj.models[0]:'All Models',
+    all_models: row_values_obj.models.length>0?row_values_obj.models.join(","):row_values_obj.models,
+    alternative_codes: row_values_obj.alternativeCodes.join(","),
+    alternative_descriptions: row_values_obj.alternativeDescriptions.join(","),
     year: row_values_obj.year,
     color_name: row_values_obj.color,
     paint_codes: row_values_obj.colorCode,
@@ -483,17 +491,48 @@ async function uploadSingle(row_values_obj) {
 
   form.append("brand", requestData.brand);
   form.append("models", requestData.models);
+  form.append("all_models", requestData.all_models);
+  form.append("alternative_codes", requestData.alternative_codes);
+  form.append("alternative_descriptions", requestData.alternative_descriptions);
   form.append("year", requestData.year);
   form.append("color_name", requestData.color_name);
   form.append("paint_codes", requestData.paint_codes);
   form.append("price", requestData.price);
   form.append("compare_price", requestData.compare_price);
+  form.append("images[]", fs.createReadStream(image_path));
+  // form.append("check_duplicates", requestData.check_duplicates);
+  console.log("FormData contents:");
+  for (let [key, value] of form.entries()) {
+    if (key === 'images[]') {
+      console.log(`${key}: [File/Stream object]`);
+    } else {
+      console.log(`${key}: ${value}`);
+    }
+  }
+  // const requestData = {
+  //   brand: row_values_obj.make,
+  //   models: row_values_obj.model,
+  //   year: row_values_obj.year,
+  //   color_name: row_values_obj.color,
+  //   paint_codes: row_values_obj.colorCode,
+  //   price: 9.95,
+  //   compare_price: 0.0,
+  //   image_path: image_path,
+  //   check_duplicates: _check_duplicates,
+  // };
+
+  // form.append("brand", requestData.brand);
+  // form.append("models", requestData.models);
+  // form.append("year", requestData.year);
+  // form.append("color_name", requestData.color_name);
+  // form.append("paint_codes", requestData.paint_codes);
+  // form.append("price", requestData.price);
+  // form.append("compare_price", requestData.compare_price);
   // form.append("check_duplicates", requestData.check_duplicates);
   // console.log("check_duplicates", requestData.check_duplicates);
   
 
   // ✅ CORRECT: This is the right way to append the file
-  form.append("images[]", fs.createReadStream(image_path));
 //   form.append("images[]", fs.createReadStream(image_path), {
 //   filename: path.basename(image_path),
 //   contentType: 'image/png'
@@ -1250,14 +1289,12 @@ async function getColorPath() {
   return color_path;
 }
 
-async function scrapColorInfoData(id) {
+async function scrapColorInfoData_del(id) {
   let load_url = "https://generalpaint.info/v2/search/formula-info?id=" + id;
-  await new_page.goto(load_url);
+  await moreinfo_page.goto(load_url);
   randomWaitTime = getRandomNumber(3500, 5500);
   await page.waitForTimeout(randomWaitTime);
-  await new_page.waitForSelector(".container.mt-4");
-  await downloadSearchFamilyCanvasImage(new_page);
-  const data = await new_page.evaluate(() => {
+  const data = await moreinfo_page.evaluate(() => {
     const container = document.querySelector(".container.mt-4");
     if (!container) return null;
     const yearAndColor =
@@ -1282,7 +1319,145 @@ async function scrapColorInfoData(id) {
   });
   return data;
 }
+async function scrapColorInfoData(id) {
+  let load_url = "https://generalpaint.info/v2/search/formula-info?id=" + id;
+  try {
+    await moreinfo_page.goto(load_url);
+    randomWaitTime = getRandomNumber(3500, 5500);
+    await page.waitForTimeout(randomWaitTime);
+    
+    const data = await moreinfo_page.evaluate(() => {
+      const container = document.querySelector(".container.mt-4");
+      if (!container) return null;
 
+      // Basic color information
+      const yearAndColor = container.querySelector(".formula-h2")?.innerHTML.trim() || null;
+      const tone = container.querySelector("td span.formula-h2")?.innerText.trim() || null;
+      const panelNo = container.querySelector("td span.formula-h2:nth-of-type(2)")?.innerText.trim() || null;
+      const details = container.querySelector("td:nth-child(3)")?.innerHTML.trim() || null;
+      const canvasWrapper = container.querySelector("#canvas_wrapper");
+      const bgColor = canvasWrapper?.style.backgroundColor || null;
+
+      // Manufacturer and color details
+      const manufacturerRow = container.querySelector(".row .col-sm-5");
+      const manufacturer = manufacturerRow?.textContent?.trim() || null;
+
+      // Color code and description
+      const colorCodeElement = container.querySelector(".row .col-sm-5:nth-child(2)");
+      const colorCode = colorCodeElement?.textContent?.trim() || null;
+
+      const colorDescElement = container.querySelector(".col-md-7 .col-sm-7");
+      const colorDescription = colorDescElement?.textContent?.trim() || null;
+
+      // Year range
+      const yearElement = container.querySelector(".col-md-7 .col-sm-6");
+      const yearRange = yearElement?.textContent?.trim() || null;
+
+      // Models data - simple array
+      const models = [];
+      const modelRows = container.querySelectorAll("#models tbody tr");
+      modelRows.forEach(row => {
+        const modelName = row.querySelector("td:first-child")?.textContent?.trim();
+        if (modelName) {
+          models.push(modelName);
+        }
+      });
+
+      // Models with years - multidimensional array
+      const modelsWithYears = [];
+      modelRows.forEach(row => {
+        const modelName = row.querySelector("td:first-child")?.textContent?.trim();
+        const startYear = row.querySelector("td:nth-child(2)")?.textContent?.trim();
+        const endYear = row.querySelector("td:nth-child(3)")?.textContent?.trim();
+        if (modelName && startYear && endYear) {
+          modelsWithYears.push({
+            model: modelName,
+            startYear: startYear,
+            endYear: endYear
+          });
+        }
+      });
+
+      // Alternative Codes - simple array
+      const alternativeCodes = [];
+      const altCodesElement = container.querySelector(".col-md-6:first-child .details-box-body");
+      if (altCodesElement) {
+        const codesText = altCodesElement.textContent?.trim();
+        if (codesText) {
+          alternativeCodes.push(...codesText.split('\n').map(code => code.trim()).filter(code => code));
+        }
+      }
+
+      // Alternative Descriptions - simple array
+      const alternativeDescriptions = [];
+      const altDescElement = container.querySelector(".col-md-6:last-child .details-box-body");
+      if (altDescElement) {
+        const descText = altDescElement.textContent?.trim();
+        if (descText) {
+          alternativeDescriptions.push(...descText.split('\n').map(desc => desc.trim()).filter(desc => desc));
+        }
+      }
+
+      return {
+        // Basic info
+        yearAndColor,
+        tone,
+        panelNo,
+        details,
+        bgColor,
+        
+        // Manufacturer and color info
+        manufacturer,
+        colorCode,
+        colorDescription,
+        yearRange,
+        
+        // Models data
+        models: models.length > 0 ? models : [],
+        modelsWithYears: modelsWithYears.length > 0 ? modelsWithYears : [],
+        
+        // Alternative data
+        alternativeCodes: alternativeCodes.length > 0 ? alternativeCodes : [],
+        alternativeDescriptions: alternativeDescriptions.length > 0 ? alternativeDescriptions : []
+      };
+    });
+
+    return data || {
+      yearAndColor: null,
+      tone: null,
+      panelNo: null,
+      details: null,
+      bgColor: null,
+      manufacturer: null,
+      colorCode: null,
+      colorDescription: null,
+      yearRange: null,
+      models: [],
+      modelsWithYears: [],
+      alternativeCodes: [],
+      alternativeDescriptions: []
+    };
+
+  } catch (error) {
+    console.error("Error scraping color info data:", error.message);
+    // Return empty structure in case of error
+    return {
+      yearAndColor: null,
+      tone: null,
+      panelNo: null,
+      details: null,
+      bgColor: null,
+      manufacturer: null,
+      colorCode: null,
+      colorDescription: null,
+      yearRange: null,
+      models: [],
+      modelsWithYears: [],
+      alternativeCodes: [],
+      alternativeDescriptions: []
+    };
+  }
+}
 async function setSearchFilters(selected_page, description = null) {
   filters_obj.description = description;
   let filters = filters_obj;
@@ -1471,6 +1646,140 @@ const goToNextPage = async (page) => {
     return true;
   } catch (error) {
     console.error("Error navigating to next page:", error.message);
+    return false;
+  }
+};
+
+const goToPageNumberDirect = async (page, targetPageNumber) => {
+  try {
+    console.log(`Attempting direct navigation to page ${targetPageNumber}`);
+    
+    // Check current page first
+    const activePageItem = await page.$(".pagination li.active");
+    if (activePageItem) {
+      const currentPageNumber = await activePageItem.evaluate(el => {
+        const link = el.querySelector('a.page-link');
+        return link ? parseInt(link.textContent) : null;
+      });
+      
+      if (currentPageNumber === targetPageNumber) {
+        console.log(`Already on page ${targetPageNumber}`);
+        return true;
+      }
+    }
+    
+    // Try to execute getPage directly
+    const result = await page.evaluate((pageNum) => {
+      if (typeof getPage === 'function') {
+        getPage(pageNum);
+        return true;
+      }
+      return false;
+    }, targetPageNumber);
+    
+    if (result) {
+      // Wait for content to load
+      await has_digital_formula(page, "#digital_formula");
+      console.log(`Successfully navigated to page ${targetPageNumber} using direct function call`);
+      return true;
+    }
+    
+    console.log('Direct getPage function not available, falling back to pagination navigation');
+    return await goToPageNumber(page, targetPageNumber);
+    
+  } catch (error) {
+    console.error(`Error in direct navigation to page ${targetPageNumber}:`, error.message);
+    return false;
+  }
+};
+
+const goToPageNumber = async (page, targetPageNumber) => {
+  try {
+    console.log(`Attempting to navigate to page ${targetPageNumber}`);
+    
+    // First, check if we're already on the target page
+    const activePageItem = await page.$(".pagination li.active");
+    if (activePageItem) {
+      const currentPageNumber = await activePageItem.evaluate(el => {
+        const link = el.querySelector('a.page-link');
+        return link ? parseInt(link.textContent) : null;
+      });
+      
+      if (currentPageNumber === targetPageNumber) {
+        console.log(`Already on page ${targetPageNumber}`);
+        return true;
+      }
+    }
+
+    let attempts = 0;
+    const maxAttempts = 10; // Safety limit to prevent infinite loops
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      
+      // Get all visible page links
+      const pageLinks = await page.$$('.pagination li.page-item a.page-link');
+      
+      // Extract page numbers from visible links
+      const visiblePageNumbers = await Promise.all(
+        pageLinks.map(async link => {
+          const text = await page.evaluate(el => el.textContent, link);
+          return parseInt(text);
+        })
+      );
+      
+      console.log(`Visible page numbers: ${visiblePageNumbers.join(', ')}`);
+      
+      // Check if target page is currently visible
+      const targetIndex = visiblePageNumbers.indexOf(targetPageNumber);
+      if (targetIndex !== -1) {
+        // Target page is visible, click it
+        await Promise.all([
+          pageLinks[targetIndex].click(),
+          page.waitForNavigation({ waitUntil: 'networkidle0' })
+        ]);
+        
+        // Verify navigation
+        await has_digital_formula(page, "#digital_formula");
+        console.log(`Successfully navigated to page ${targetPageNumber}`);
+        return true;
+      }
+      
+      // Determine navigation direction
+      const maxVisiblePage = Math.max(...visiblePageNumbers);
+      const minVisiblePage = Math.min(...visiblePageNumbers);
+      
+      if (targetPageNumber > maxVisiblePage) {
+        // Need to go forward - click the last visible page to advance the pagination
+        console.log(`Target page ${targetPageNumber} is beyond current range. Clicking page ${maxVisiblePage} to advance.`);
+        await Promise.all([
+          pageLinks[pageLinks.length - 1].click(),
+          page.waitForNavigation({ waitUntil: 'networkidle0' })
+        ]);
+      } else if (targetPageNumber < minVisiblePage) {
+        // Need to go backward - click the first visible page to go back
+        console.log(`Target page ${targetPageNumber} is before current range. Clicking page ${minVisiblePage} to go back.`);
+        await Promise.all([
+          pageLinks[0].click(),
+          page.waitForNavigation({ waitUntil: 'networkidle0' })
+        ]);
+      } else {
+        console.log(`Target page ${targetPageNumber} not found in visible range`);
+        return false;
+      }
+      
+      // Wait for content to load
+      await has_digital_formula(page, "#digital_formula");
+      
+      // Small delay to ensure pagination has updated
+      await page.waitForTimeout(500);
+    }
+    
+    console.log(`Failed to reach page ${targetPageNumber} after ${maxAttempts} attempts`);
+    return false;
+    
+  } catch (error) {
+    console.error(`Error navigating to page ${targetPageNumber}:`, error.message);
     return false;
   }
 };
@@ -2228,24 +2537,27 @@ async function loadFromPage(res) {
         groupdesc: null,
         effect: null,
       };
-      await setSearchFilters(page);
-        await page.waitForFunction(
-          () => {
-            const modelSelect = document.querySelector("#models_dropdown");
-            return modelSelect && modelSelect.options.length > 1; // More than just empty option
-          },
-          { timeout: 10000 }
-        );
-        console.log(
-        "all models : ",
-        _models_drop_down
-      );
+      // await setSearchFilters(page);
+      //   await page.waitForFunction(
+      //     () => {
+      //       const modelSelect = document.querySelector("#models_dropdown");
+      //       return modelSelect && modelSelect.options.length > 1; // More than just empty option
+      //     },
+      //     { timeout: 10000 }
+      //   );
+      //   console.log(
+      //   "all models : ",
+      //   _models_drop_down
+      // );
       for (
-        let adjusted_index = 1;
-        adjusted_index <= _models_drop_down.length;
+        // let adjusted_index = 1;
+        // adjusted_index <= _models_drop_down.length;
+        // adjusted_index++
+        let adjusted_index = 0;
+        adjusted_index < 1;
         adjusted_index++
       ) {
-        let model_drop_down_index = adjusted_index % _models_drop_down.length;
+        // let model_drop_down_index = adjusted_index % _models_drop_down.length;
         if (obj_search_filter_param_csv?.allowed_models?.length > 0) {
           if (
             !obj_search_filter_param_csv.allowed_models.includes(
@@ -2388,10 +2700,17 @@ async function recoverPage() {
     await loginPage(multitone_page,true);
     console.log('Setting filter multitone page');
 
+    await loginPage(moreinfo_page,true);
+    console.log('Setting filter moreinfo page');
+
     await setSearchFilters(multitone_page);
     console.log('Reload new page');
 
     await new_page.reload();
+    console.log('Go to page number 1');
+    await goToPageNumberDirect(page,_page_number);
+    console.log('Go to multitone_page 1');
+    await goToPageNumberDirect(multitone_page,_multitone_page_number);
     console.log('End Pages recovery');
 
     let randomWaitTime = getRandomNumber(5500, 7500);
@@ -2559,7 +2878,7 @@ async function has_digital_formula(formula_page, selector) {
         await formula_page.waitForTimeout(15000);
         console.log("Timeout for 15 seconds loggin in again");
         // await formula_page.waitForTimeout(1800000);
-        await recoverPage(formula_page);
+        await recoverPage();
       ////////
       
       // Reset retry count and continue the loop
@@ -2579,7 +2898,6 @@ async function scrapDataFromPages() {
   currentRecursionDepth = 0;
   visitedMultitones.clear();
   await setSearchFilters(page);
-  let page_num=0;
   
   let randomWaitTime = getRandomNumber(2500, 3500);
   await page.waitForTimeout(randomWaitTime);
@@ -2599,8 +2917,8 @@ async function scrapDataFromPages() {
           hasNextPage = false;
           break;
         } 
-        page_num++;
-        console.log("page_num : ", page_num);
+        _page_number++;
+        console.log("_page_number : ", _page_number);
 
         containers_details = await page.$$eval(
           "#digital_formula > .root",
@@ -2687,6 +3005,7 @@ async function scrapDataFromPages() {
           }
 
           await setSearchFilters(multitone_page, description);
+            _multitone_page_number=1;
 
           let hasNextMultiPage = true;
           while (hasNextMultiPage) {
@@ -2759,7 +3078,7 @@ async function scrapDataFromPages() {
                 await saveToExcel(extracted_data, "paint/sheets/paint.csv");
               }
             }
-
+            _multitone_page_number++;
             hasNextMultiPage = await goToNextPage(multitone_page);
           }
         }
@@ -2845,14 +3164,24 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
         const id = urlAndIdMatch[2];
         manageSetSize();
         let scrap_details = await scrapFormaulaDetailsData(container);
-        for (const scrap_detail of scrap_details) {
+        for (const scrap_detail of scrap_details) {// since this will always return single record
           combinedData = { ...container, ...scrap_detail };
-          new_data_arr.push(combinedData);
         }
+        let scrap_more_details = await scrapColorInfoData(id);
+        combinedData = { ...scrap_more_details, ...combinedData };
+        // combinedData = { ...combinedData, ...scrap_more_details };
+        // Alternative approach: Only add missing keys from scrap_more_details
+      // combinedData = {
+      //   ...combinedData,
+      //   ...Object.fromEntries(
+      //     Object.entries(scrap_more_details).filter(([key]) => !(key in combinedData))
+      //   )
+        new_data_arr.push(combinedData);
         infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
         // detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
         console.log("detailColorUrl:", detailColorUrl);
         console.log("multiple colors data_arr:", new_data_arr);
+        console.log("infoColorUrl:", infoColorUrl);
 
         // await scrapColorInfoData(id);
         // infoColorUrl = 'https://generalpaint.info/v2/search/formula-info?id=107573';
@@ -2869,6 +3198,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
     return new_data_arr;
   }
 }
+
 const escapeCsvValue = (value) => {
   if (value == null) return "";
   let str = String(value)
