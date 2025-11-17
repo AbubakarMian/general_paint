@@ -40,7 +40,7 @@ let currentRecursionDepth = 0;
 let write_response = null;
 let processedCombinations = new Set();
 let processedRecords = new Set();
-let isTesting =true;
+let isTesting =false;
 let totalTestingCount = 10;
 
 async function loadUrl(retries = 1000) {
@@ -480,7 +480,8 @@ async function uploadSingle(row_values_obj) {
   // Store request data for logging
   const requestData = {
     brand: row_values_obj.make,
-    models: row_values_obj.models.length>0?row_values_obj.models[0]:'All Models',
+    // models: row_values_obj.models.length>0?row_values_obj.models[0]:'All Models',
+    models: _models_drop_down?.[filters_obj?.model] ?? 'All Models',
     all_models: row_values_obj.models?.join(",") || '',
     alternative_codes: row_values_obj.alternativeCodes?.join(",") || '',
     alternative_descriptions: row_values_obj.alternativeDescriptions?.join(",") || '',
@@ -724,7 +725,7 @@ async function findDropdownIndex(selector, text) {
 
     console.log(`Looking for option "${text}" in dropdown ${selector}`);
 
-    await page.waitForSelector(selector, { timeout: 10000 });
+    await page.waitForSelector(selector, { timeout: 3000 });
 
     const result = await page.evaluate(
       ({ selector, searchText }) => {
@@ -887,23 +888,59 @@ async function scrapFormaulaDetailsData(container) {
       let sid = container.sid;
       let id = container.familyId;
       let parse_paint_info = parsePaintInfo(container.content);
-      let colorCode = parse_paint_info.code;
-      let colorName = parse_paint_info.colorName;
+      let colorCode = parse_paint_info.code ?? '';
+      let colorName = parse_paint_info.colorName ?? '';
       let uniq_color = colorName + "-" + colorCode;
       console.log("check color : ", uniq_color);
-      
+
+      const modelName = _models_drop_down?.[filters_obj?.model] ?? "";
+
       if (!parse_paint_info || !parse_paint_info.colorName) {
         console.log("No color name found in container content");
         return [];
       }
+
       if (uniq_color) {
-        if (processedCombinations.has(uniq_color)) {
-          console.log(`Skipping duplicate color: ${uniq_color}`);
-          return []; // Return empty array for duplicates
+        // Create composite key with both color and model
+        const compositeKey = `${uniq_color}|${modelName}`;
+        
+        // Check for exact duplicate (same color + same model)
+        if (processedCombinations.has(compositeKey)) {
+          console.log(`Skipping exact duplicate: ${uniq_color} with model: ${modelName}`);
+          return [];
         }
-        processedCombinations.add(uniq_color);
+        
+        // Check for model-based conditions across all records with same color
+        const allRecords = Array.from(processedCombinations);
+        const sameColorRecords = allRecords.filter(record => 
+          record.startsWith(uniq_color + "|")
+        );
+        
+        if (sameColorRecords.length > 0) {
+          // Extract existing models for this color
+          const existingModels = sameColorRecords.map(record => 
+            record.replace(uniq_color + "|", "")
+          );
+          
+          // Check if any existing model meets our skip conditions
+          const shouldSkip = existingModels.some(existingModel => {
+            const isSameModel = existingModel === modelName;
+            const isEmptyModel = !modelName || modelName === "" || modelName.toLowerCase() === "all models";
+            const isExistingEmptyModel = !existingModel || existingModel === "" || existingModel.toLowerCase() === "all models";
+            
+            return isSameModel || isEmptyModel || isExistingEmptyModel;
+          });
+          
+          if (shouldSkip) {
+            console.log(`Skipping color ${uniq_color} for model ${modelName} due to model conditions. Existing models: ${existingModels.join(', ')}`);
+            return [];
+          }
+        }
+        
+        // If we get here, process the record
+        processedCombinations.add(compositeKey);
         console.log(
-          `Processing new uniq_color: ${uniq_color}. Current processed count: ${processedCombinations.size}`
+          `Processing new combination: ${compositeKey}. Current processed count: ${processedCombinations.size}`
         );
       } else {
         console.log("No STANDARD color found");
@@ -1432,8 +1469,6 @@ async function scrapColorInfoData_del(id) {
   }
 }
 async function scrapColorInfoData(id) {
-  // let load_url = "https://generalpaint.info/v2/search/formula-info?id=126407";
-  
   let load_url = "https://generalpaint.info/v2/search/formula-info?id=" + id;
   try {
     await moreinfo_page.goto(load_url);
@@ -1517,7 +1552,7 @@ async function scrapColorInfoData(id) {
         }
       });
 
-      // Alternative Codes - fixed to get actual data
+      // Alternative Codes - improved selector
       const alternativeCodes = [];
       const altCodesElement = container.querySelector(".col-md-6:first-child .details-box-body");
       if (altCodesElement) {
@@ -1528,15 +1563,42 @@ async function scrapColorInfoData(id) {
         alternativeCodes.push(...codes);
       }
 
-      // Alternative Descriptions - fixed to get actual data
+      // Alternative Descriptions - improved logic to handle missing section
       const alternativeDescriptions = [];
+      // Look for the second .col-md-6 with .details-box-body that contains descriptions
       const altDescElement = container.querySelector(".col-md-6:last-child .details-box-body");
+      
+      // Check if this element actually contains alternative descriptions
       if (altDescElement) {
-        const htmlContent = altDescElement.innerHTML;
-        const descriptions = htmlContent.split('<br>')
-          .map(desc => desc.replace(/<[^>]*>/g, '').trim())
-          .filter(desc => desc && desc.length > 0 && !desc.match(/alternative descriptions/i));
-        alternativeDescriptions.push(...descriptions);
+        const header = altDescElement.closest('.col-md-6')?.querySelector('.details-box-header');
+        const headerText = header?.textContent?.trim().toLowerCase();
+        
+        // Only process if it's actually the alternative descriptions section
+        if (headerText && headerText.includes('alternative description')) {
+          const htmlContent = altDescElement.innerHTML;
+          const descriptions = htmlContent.split('<br>')
+            .map(desc => desc.replace(/<[^>]*>/g, '').trim())
+            .filter(desc => desc && desc.length > 0 && !desc.match(/alternative descriptions/i));
+          alternativeDescriptions.push(...descriptions);
+        }
+      }
+
+      // If no alternative descriptions found, check if there are any other description sections
+      if (alternativeDescriptions.length === 0) {
+        // Look for any other potential description sections
+        const allDetailsBoxes = container.querySelectorAll('.details-box-body');
+        allDetailsBoxes.forEach(box => {
+          const header = box.closest('.col-md-6')?.querySelector('.details-box-header');
+          const headerText = header?.textContent?.trim().toLowerCase();
+          
+          if (headerText && headerText.includes('alternative description')) {
+            const htmlContent = box.innerHTML;
+            const descriptions = htmlContent.split('<br>')
+              .map(desc => desc.replace(/<[^>]*>/g, '').trim())
+              .filter(desc => desc && desc.length > 0 && !desc.match(/alternative descriptions/i));
+            alternativeDescriptions.push(...descriptions);
+          }
+        });
       }
 
       let scarapInfoObj = {
@@ -1858,7 +1920,7 @@ const goToPageNumberDirect = async (page, targetPageNumber) => {
 const goToPageNumber = async (page, targetPageNumber) => {
   try {
     console.log(`Attempting to navigate to page ${targetPageNumber}`);
-    await page.waitForTimeout(15000);
+    await page.waitForTimeout(10000);
     console.log('find selector');
     // First, check if we're already on the target page
     const activePageItem = await page.$(".pagination li.active");
@@ -2704,7 +2766,7 @@ async function loadFromPage(res) {
             const modelSelect = document.querySelector("#models_dropdown");
             return modelSelect && modelSelect.options.length > 1; // More than just empty option
           },
-          { timeout: 10000 }
+          { timeout: 5000 }
         );
       }
       // else{
@@ -2915,61 +2977,6 @@ async function retryWithBackoff(
   throw lastError;
 }
 
-async function has_digital_formula_del(formula_page, selector) {
-  let retryCount = 0;
-  let MAX_RETRIES = 5;
-  let ERROR_MESSAGE =
-    "We could not find any formulas. Try to modify your search.";
-  while (retryCount < MAX_RETRIES) {
-    try {
-        await formula_page.waitForNavigation({ waitUntil: 'networkidle0' });
-        // let randomWaitTime = getRandomNumber(5000, 7500);
-        // await formula_page.waitForTimeout(randomWaitTime);
-        
-        let formula_page_selector = await Promise.race([
-          formula_page.waitForSelector(selector, { timeout: 10000 }),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Timeout")), 10000)
-          ),
-        ]);
-        if (formula_page_selector) {
-          return true;
-        }
-        
-        let errorAlert = await formula_page.waitForSelector('.alert.alert-danger', { 
-              timeout: 10000 
-          }).catch(() => null);
-        // let errorAlert = await formula_page.$(".alert.alert-danger");
-        if (errorAlert) {
-          let errorText = await formula_page.evaluate(
-            (el) => el.textContent.trim(),
-            errorAlert
-          );
-          if (errorText.includes(ERROR_MESSAGE)) {
-            console.log("Error message detected - no formulas found");
-            return false;
-          }
-      }
-  }
-  catch (error) {
-      retryCount++;
-      console.log(
-        `Retry ${retryCount}/${MAX_RETRIES} for selector "${selector}"...`
-      );
-      await loginPage(formula_page);
-      // Optional: Add delay between retries
-      if (retryCount < MAX_RETRIES) {
-        await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
-      }
-    }
-  }
-    console.log(
-    `Server is not responding taking timeout for 30 mins for server to revive`
-  );
-        await formula_page.waitForTimeout(1800000);
-        return has_digital_formula(formula_page, selector);
-
-}
 async function has_digital_formula(formula_page, selector) {
   let retryCount = 0;
   let MAX_RETRIES = 5;
@@ -2978,7 +2985,7 @@ async function has_digital_formula(formula_page, selector) {
   while (retryCount < MAX_RETRIES) {
     try {
       // await formula_page.waitForNavigation({ waitUntil: 'networkidle0' });
-        await formula_page.waitForTimeout(15000);
+        await formula_page.waitForTimeout(5000);
       console.log('find selector');
       // Race between finding the selector and timing out
       const result = await Promise.race([
@@ -3002,7 +3009,7 @@ async function has_digital_formula(formula_page, selector) {
           
         // Option 3: Overall timeout
         new Promise((resolve) => 
-          setTimeout(() => resolve('TIMEOUT'), 10000)
+          setTimeout(() => resolve('TIMEOUT'), 5000)
         )
       ]);
 
@@ -3295,76 +3302,113 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
     let  detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
 
     write_response.write(
-    `data: ${JSON.stringify({
-      type: "processing_new_row",
-      url: detailColorUrl,
-    })}\n\n`
-  );
-  let new_data_arr = [];
-  const containerKey = `${container.familyId}-${container.sid}`;
-  if (await processedRecords.has(containerKey)) {
-    console.log(`Skipping already processed container: ${containerKey}`);
-    return [];
-  }
-  else{
-    await processedRecords.add(containerKey);
-  }
-  let combinedData = {};
-  try {
-    buttons = await listpage.$$(
-      '#digital_formula > .root button[data-original-title="Color Information"]'
+      `data: ${JSON.stringify({
+        type: "processing_new_row",
+        url: detailColorUrl,
+      })}\n\n`
+    );
+    let new_data_arr = [];
+    const containerKey = `${container.familyId}-${container.sid}`;
+    const modelName = _models_drop_down?.[filters_obj?.model] ?? "";
+
+    // Create composite key with both container and model
+    const compositeKey = `${containerKey}|${modelName}`;
+
+    // Check if this exact container+model combination already exists
+    if (await processedRecords.has(compositeKey)) {
+      console.log(`Skipping exact duplicate container: ${containerKey} with model: ${modelName}`);
+      return [];
+    }
+
+    // Check for model-based conditions across all records with same container
+    const allRecords = Array.from(await processedRecords.keys());
+    const sameContainerRecords = allRecords.filter(record => 
+      record.startsWith(containerKey + "|")
     );
 
-    if (buttons[i]) {
-      console.log(`Processing container ${i}`);
-
-      await buttons[i].scrollIntoViewIfNeeded();
-      const onclickValue = await buttons[i].evaluate((button) =>
-        button.getAttribute("onclick")
+    if (sameContainerRecords.length > 0) {
+      // Extract existing models for this container
+      const existingModels = sameContainerRecords.map(record => 
+        record.replace(containerKey + "|", "")
       );
-
-      const urlAndIdMatch = onclickValue.match(
-        /formulaInfo\(event,'([^']+)','([^']+)'\)/
-      );
-      if (urlAndIdMatch && urlAndIdMatch[1] && urlAndIdMatch[2]) {
-        const url = urlAndIdMatch[1];
-        const id = urlAndIdMatch[2];
-        manageSetSize();
-        let scrap_details = await scrapFormaulaDetailsData(container);
-        let new_data_found = scrap_details.length>0;
-        if(new_data_found){
-          for (const scrap_detail of scrap_details) {// since this will always return single record
-            combinedData = { ...container, ...scrap_detail };
-          }
-          let scrap_more_details = await scrapColorInfoData(id);
-          console.log('scrapColorInfoData details scraped: ',scrap_details);
-          combinedData = { ...scrap_more_details, ...combinedData };
-            // combinedData = { ...combinedData, ...scrap_more_details };
-            // Alternative approach: Only add missing keys from scrap_more_details
-          // combinedData = {
-          //   ...combinedData,
-          //   ...Object.fromEntries(
-          //     Object.entries(scrap_more_details).filter(([key]) => !(key in combinedData))
-          //   )
-          new_data_arr.push(combinedData);
-          infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
-          // detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
-          console.log("detailColorUrl:", detailColorUrl);
-          console.log("multiple colors data_arr:", new_data_arr);
-          console.log("infoColorUrl:", infoColorUrl);
-
-        }
-        else{
-          console.log("old data found for this container detailColorUrl : ",detailColorUrl);
-        }
+      
+      // Check if any existing model meets our skip conditions
+      const shouldSkip = existingModels.some(existingModel => {
+        const isSameModel = existingModel === modelName;
+        const isEmptyModel = !modelName || modelName === "" || modelName.toLowerCase() === "all models";
+        const isExistingEmptyModel = !existingModel || existingModel === "" || existingModel.toLowerCase() === "all models";
         
-        // await scrapColorInfoData(id);
-        // infoColorUrl = 'https://generalpaint.info/v2/search/formula-info?id=107573';
-        // detailColorUrl = 'https://generalpaint.info/v2/search/family?id=67746&sid=67d00e248ae305.41320823';
-      } else {
-        console.error("Failed to extract URL and ID from onclick value");
+        return isSameModel || isEmptyModel || isExistingEmptyModel;
+      });
+      
+      if (shouldSkip) {
+        console.log(`Skipping container ${containerKey} for model ${modelName} due to model conditions. Existing models: ${existingModels.join(', ')}`);
+        return [];
       }
+      
+      console.log(`Container ${containerKey} found with different model. Previous models: ${existingModels.join(', ')}, Current: ${modelName}`);
+    } else {
+      console.log(`Container added to processedRecords ${containerKey} with model: ${modelName}`);
     }
+
+    // Store the composite key
+    await processedRecords.add(compositeKey);
+    let combinedData = {};
+    try {
+      buttons = await listpage.$$(
+        '#digital_formula > .root button[data-original-title="Color Information"]'
+      );
+
+      if (buttons[i]) {
+        console.log(`Processing container ${i}`);
+
+        await buttons[i].scrollIntoViewIfNeeded();
+        const onclickValue = await buttons[i].evaluate((button) =>
+          button.getAttribute("onclick")
+        );
+
+        const urlAndIdMatch = onclickValue.match(
+          /formulaInfo\(event,'([^']+)','([^']+)'\)/
+        );
+        if (urlAndIdMatch && urlAndIdMatch[1] && urlAndIdMatch[2]) {
+          const url = urlAndIdMatch[1];
+          const id = urlAndIdMatch[2];
+          manageSetSize();
+          let scrap_details = await scrapFormaulaDetailsData(container);
+          let new_data_found = scrap_details.length>0;
+          if(new_data_found){
+            for (const scrap_detail of scrap_details) {// since this will always return single record
+              combinedData = { ...container, ...scrap_detail };
+            }
+            let scrap_more_details = await scrapColorInfoData(id);
+            console.log('scrapColorInfoData details scraped: ',scrap_details);
+            combinedData = { ...scrap_more_details, ...combinedData };
+              // combinedData = { ...combinedData, ...scrap_more_details };
+              // Alternative approach: Only add missing keys from scrap_more_details
+            // combinedData = {
+            //   ...combinedData,
+            //   ...Object.fromEntries(
+            //     Object.entries(scrap_more_details).filter(([key]) => !(key in combinedData))
+            //   )
+            new_data_arr.push(combinedData);
+            infoColorUrl = `https://generalpaint.info/v2/search/formula-info?id=${id}`;
+            // detailColorUrl = `https://generalpaint.info/v2/search/family?id=${container.familyId}&sid=${container.sid}`;
+            console.log("detailColorUrl:", detailColorUrl);
+            console.log("multiple colors data_arr:", new_data_arr);
+            console.log("infoColorUrl:", infoColorUrl);
+
+          }
+          else{
+            console.log("old data found for this container detailColorUrl : ",detailColorUrl);
+          }
+          
+          // await scrapColorInfoData(id);
+          // infoColorUrl = 'https://generalpaint.info/v2/search/formula-info?id=107573';
+          // detailColorUrl = 'https://generalpaint.info/v2/search/family?id=67746&sid=67d00e248ae305.41320823';
+        } else {
+          console.error("Failed to extract URL and ID from onclick value");
+        }
+      }
   } catch (error) {
     console.error("Error scrapDataFromList:", error);
     console.error("url :", detailColorUrl);
