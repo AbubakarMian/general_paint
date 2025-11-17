@@ -40,6 +40,8 @@ let currentRecursionDepth = 0;
 let write_response = null;
 let processedCombinations = new Set();
 let processedRecords = new Set();
+let isTesting =true;
+let totalTestingCount = 10;
 
 async function loadUrl(retries = 1000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -457,6 +459,7 @@ async function buildFilterRow(filters_search) {
 }
 
 async function uploadSingle(row_values_obj) {
+
   let image_path = row_values_obj.image_path;
   const form = new FormData();
   const stream = fs.createReadStream(image_path);
@@ -478,9 +481,9 @@ async function uploadSingle(row_values_obj) {
   const requestData = {
     brand: row_values_obj.make,
     models: row_values_obj.models.length>0?row_values_obj.models[0]:'All Models',
-    all_models: row_values_obj.models.length>0?row_values_obj.models.join(","):row_values_obj.models,
-    alternative_codes: row_values_obj.alternativeCodes.join(","),
-    alternative_descriptions: row_values_obj.alternativeDescriptions.join(","),
+    all_models: row_values_obj.models?.join(",") || '',
+    alternative_codes: row_values_obj.alternativeCodes?.join(",") || '',
+    alternative_descriptions: row_values_obj.alternativeDescriptions?.join(",") || '',
     year: row_values_obj.year,
     color_name: row_values_obj.color,
     paint_codes: row_values_obj.colorCode,
@@ -490,7 +493,12 @@ async function uploadSingle(row_values_obj) {
     check_duplicates: _check_duplicates,
   };
 
-  form.append("brand", requestData.brand);
+  let brand_name=requestData.brand;
+  if(isTesting){
+    brand_name = 'testing_brand_'+requestData.brand;
+  }
+  form.append("brand", brand_name);
+  // form.append("brand", requestData.brand);
   form.append("models", requestData.models);
   form.append("all_models", requestData.all_models);
   form.append("alternative_codes", requestData.alternative_codes);
@@ -503,56 +511,18 @@ async function uploadSingle(row_values_obj) {
   form.append("images[]", fs.createReadStream(image_path));
   // form.append("check_duplicates", requestData.check_duplicates);
   console.log("FormData contents:");
-  for (let [key, value] of form.entries()) {
-    if (key === 'images[]') {
-      console.log(`${key}: [File/Stream object]`);
-    } else {
-      console.log(`${key}: ${value}`);
-    }
-  }
-  // const requestData = {
-  //   brand: row_values_obj.make,
-  //   models: row_values_obj.model,
-  //   year: row_values_obj.year,
-  //   color_name: row_values_obj.color,
-  //   paint_codes: row_values_obj.colorCode,
-  //   price: 9.95,
-  //   compare_price: 0.0,
-  //   image_path: image_path,
-  //   check_duplicates: _check_duplicates,
-  // };
-
-  // form.append("brand", requestData.brand);
-  // form.append("models", requestData.models);
-  // form.append("year", requestData.year);
-  // form.append("color_name", requestData.color_name);
-  // form.append("paint_codes", requestData.paint_codes);
-  // form.append("price", requestData.price);
-  // form.append("compare_price", requestData.compare_price);
-  // form.append("check_duplicates", requestData.check_duplicates);
-  // console.log("check_duplicates", requestData.check_duplicates);
+  const formDataObj = {};
+  console.log("models", requestData.models);
+  console.log("all_models", requestData.all_models);
+  console.log("alternative_codes", requestData.alternative_codes);
+  console.log("alternative_descriptions", requestData.alternative_descriptions);
+  console.log("year", requestData.year);
+  console.log("color_name", requestData.color_name);
+  console.log("paint_codes", requestData.paint_codes);
+  console.log("price", requestData.price);
+  console.log("compare_price", requestData.compare_price);
+  console.log("Form data:", formDataObj);
   
-
-  // ✅ CORRECT: This is the right way to append the file
-//   form.append("images[]", fs.createReadStream(image_path), {
-//   filename: path.basename(image_path),
-//   contentType: 'image/png'
-// });
-  //   form.append("images[]", fs.readFileSync(image_path), {
-  //   filename: path.basename(image_path),
-  //   contentType: 'image/png' // or get mime type dynamically
-  // });
-
-
-    //   const imageBuffer = fs.readFileSync(image_path);
-    // const filename = path.basename(image_path);
-    // const blob = base64ToBlob(base64String, getContentType(image_path));
-    // form.append("images[]", blob, filename);
-    // form.append("images[]", imageBuffer, {
-    //   filename: filename,
-    //   contentType: getContentType(normalizedImagePath),
-    //   knownLength: imageBuffer.length
-    // });
 
   try {
     console.log("Uploading single file:", image_path);
@@ -1320,8 +1290,9 @@ async function scrapColorInfoData_del(id) {
   });
   return data;
 }
-async function scrapColorInfoData(id) {
-  let load_url = "https://generalpaint.info/v2/search/formula-info?id=" + id;
+async function scrapColorInfoData_del(id) {
+  // let load_url = "https://generalpaint.info/v2/search/formula-info?id=" + id;
+  let load_url = "https://generalpaint.info/v2/search/formula-info?id=126407";
   try {
     await moreinfo_page.goto(load_url);
     randomWaitTime = getRandomNumber(3500, 5500);
@@ -1398,8 +1369,7 @@ async function scrapColorInfoData(id) {
           alternativeDescriptions.push(...descText.split('\n').map(desc => desc.trim()).filter(desc => desc));
         }
       }
-
-      return {
+      let scarapInfoObj = {
         // Basic info
         yearAndColor,
         tone,
@@ -1421,6 +1391,8 @@ async function scrapColorInfoData(id) {
         alternativeCodes: alternativeCodes.length > 0 ? alternativeCodes : [],
         alternativeDescriptions: alternativeDescriptions.length > 0 ? alternativeDescriptions : []
       };
+      console.log('before returning sucessful scrapColorInfoData',scarapInfoObj);
+      return scarapInfoObj;
     });
 
     return data || {
@@ -1458,6 +1430,195 @@ async function scrapColorInfoData(id) {
       alternativeDescriptions: []
     };
   }
+}
+async function scrapColorInfoData(id) {
+  // let load_url = "https://generalpaint.info/v2/search/formula-info?id=126407";
+  
+  let load_url = "https://generalpaint.info/v2/search/formula-info?id=" + id;
+  try {
+    await moreinfo_page.goto(load_url);
+    randomWaitTime = getRandomNumber(3500, 5500);
+    await page.waitForTimeout(randomWaitTime);
+    
+    const data = await moreinfo_page.evaluate(() => {
+      // Try multiple possible container selectors
+      const container = document.querySelector(".content.m-3") || 
+                       document.querySelector(".container.mt-4") ||
+                       document.querySelector(".content") ||
+                       document.querySelector(".container") ||
+                       document.body;
+
+      if (!container) return null;
+
+      // Helper function to safely get text content
+      const getText = (element, selector) => {
+        const el = element.querySelector(selector);
+        return el?.textContent?.trim() || null;
+      };
+
+      // Basic color information - try multiple selectors
+      const yearAndColor = getText(container, ".formula-h2") || 
+                          getText(container, ".formula-h3") ||
+                          getText(container, "h2, h3");
+
+      const tone = getText(container, "td span.formula-h2") || 
+                  getText(container, ".tone") ||
+                  getText(container, "[class*='tone']");
+
+      const panelNo = getText(container, "td span.formula-h2:nth-of-type(2)") || 
+                     getText(container, ".panel-no") ||
+                     getText(container, "[class*='panel']");
+
+      // Manufacturer and color details - flexible selectors
+      const manufacturer = getText(container, ".col-sm-5") || 
+                          getText(container, "[class*='manufactur']") ||
+                          getText(container, "b:contains('Manufacturer') + *");
+
+      const colorCode = getText(container, ".col-sm-5:nth-child(2)") || 
+                       getText(container, "[class*='color-code']") ||
+                       getText(container, "b:contains('Color Code') + *");
+
+      const colorDescription = getText(container, ".col-sm-7") || 
+                              getText(container, "[class*='description']") ||
+                              getText(container, "b:contains('Color Description') + *");
+
+      const yearRange = getText(container, ".col-sm-6") || 
+                       getText(container, "[class*='year']") ||
+                       getText(container, "b:contains('Year') + *");
+
+      // Canvas background color
+      const canvasWrapper = container.querySelector("#canvas_wrapper") || 
+                           container.querySelector("[class*='canvas']") ||
+                           container.querySelector("canvas")?.parentElement;
+      const bgColor = canvasWrapper?.style.backgroundColor || null;
+
+      // Models data
+      const models = [];
+      const modelsWithYears = [];
+      const modelRows = container.querySelectorAll("#models tbody tr");
+      
+      modelRows.forEach(row => {
+        const modelName = row.querySelector("td:first-child")?.textContent?.trim();
+        if (modelName) {
+          models.push(modelName);
+        }
+      });
+
+      modelRows.forEach(row => {
+        const modelName = row.querySelector("td:first-child")?.textContent?.trim();
+        const startYear = row.querySelector("td:nth-child(2)")?.textContent?.trim();
+        const endYear = row.querySelector("td:nth-child(3)")?.textContent?.trim();
+        if (modelName) {
+          modelsWithYears.push({
+            model: modelName,
+            startYear: startYear || null,
+            endYear: endYear || null
+          });
+        }
+      });
+
+      // Alternative Codes - fixed to get actual data
+      const alternativeCodes = [];
+      const altCodesElement = container.querySelector(".col-md-6:first-child .details-box-body");
+      if (altCodesElement) {
+        const htmlContent = altCodesElement.innerHTML;
+        const codes = htmlContent.split('<br>')
+          .map(code => code.replace(/<[^>]*>/g, '').trim())
+          .filter(code => code && code.length > 0 && !code.match(/alternative codes/i));
+        alternativeCodes.push(...codes);
+      }
+
+      // Alternative Descriptions - fixed to get actual data
+      const alternativeDescriptions = [];
+      const altDescElement = container.querySelector(".col-md-6:last-child .details-box-body");
+      if (altDescElement) {
+        const htmlContent = altDescElement.innerHTML;
+        const descriptions = htmlContent.split('<br>')
+          .map(desc => desc.replace(/<[^>]*>/g, '').trim())
+          .filter(desc => desc && desc.length > 0 && !desc.match(/alternative descriptions/i));
+        alternativeDescriptions.push(...descriptions);
+      }
+
+      let scarapInfoObj = {
+        // Basic info
+        yearAndColor,
+        tone,
+        panelNo,
+        details: null,
+        bgColor,
+        
+        // Manufacturer and color info
+        manufacturer,
+        colorCode,
+        colorDescription,
+        yearRange,
+        
+        // Models data
+        models: models.length > 0 ? models : [],
+        modelsWithYears: modelsWithYears.length > 0 ? modelsWithYears : [],
+        
+        // Alternative data
+        alternativeCodes: alternativeCodes.length > 0 ? alternativeCodes : [],
+        alternativeDescriptions: alternativeDescriptions.length > 0 ? alternativeDescriptions : []
+      };
+      
+      console.log('Scraping result:', scarapInfoObj);
+      return scarapInfoObj;
+    });
+
+    return data || {
+      yearAndColor: null,
+      tone: null,
+      panelNo: null,
+      details: null,
+      bgColor: null,
+      manufacturer: null,
+      colorCode: null,
+      colorDescription: null,
+      yearRange: null,
+      models: [],
+      modelsWithYears: [],
+      alternativeCodes: [],
+      alternativeDescriptions: []
+    };
+
+  } catch (error) {
+    console.error("Error scraping color info data:", error.message);
+    return {
+      yearAndColor: null,
+      tone: null,
+      panelNo: null,
+      details: null,
+      bgColor: null,
+      manufacturer: null,
+      colorCode: null,
+      colorDescription: null,
+      yearRange: null,
+      models: [],
+      modelsWithYears: [],
+      alternativeCodes: [],
+      alternativeDescriptions: []
+    };
+  }
+}
+
+// Helper function for empty result
+function createEmptyResult() {
+  return {
+    yearAndColor: null,
+    tone: null,
+    panelNo: null,
+    details: null,
+    bgColor: null,
+    manufacturer: null,
+    colorCode: null,
+    colorDescription: null,
+    yearRange: null,
+    models: [],
+    modelsWithYears: [],
+    alternativeCodes: [],
+    alternativeDescriptions: []
+  };
 }
 async function setSearchFilters(selected_page, description = null) {
   filters_obj.description = description;
@@ -1697,7 +1858,8 @@ const goToPageNumberDirect = async (page, targetPageNumber) => {
 const goToPageNumber = async (page, targetPageNumber) => {
   try {
     console.log(`Attempting to navigate to page ${targetPageNumber}`);
-    
+    await page.waitForTimeout(15000);
+    console.log('find selector');
     // First, check if we're already on the target page
     const activePageItem = await page.$(".pagination li.active");
     if (activePageItem) {
@@ -1737,7 +1899,7 @@ const goToPageNumber = async (page, targetPageNumber) => {
         // Target page is visible, click it
         await Promise.all([
           pageLinks[targetIndex].click(),
-          page.waitForNavigation({ waitUntil: 'networkidle0' })
+          // page.waitForNavigation({ waitUntil: 'networkidle0' })
         ]);
         
         // Verify navigation
@@ -1755,14 +1917,14 @@ const goToPageNumber = async (page, targetPageNumber) => {
         console.log(`Target page ${targetPageNumber} is beyond current range. Clicking page ${maxVisiblePage} to advance.`);
         await Promise.all([
           pageLinks[pageLinks.length - 1].click(),
-          page.waitForNavigation({ waitUntil: 'networkidle0' })
+          // page.waitForNavigation({ waitUntil: 'networkidle0' })
         ]);
       } else if (targetPageNumber < minVisiblePage) {
         // Need to go backward - click the first visible page to go back
         console.log(`Target page ${targetPageNumber} is before current range. Clicking page ${minVisiblePage} to go back.`);
         await Promise.all([
           pageLinks[0].click(),
-          page.waitForNavigation({ waitUntil: 'networkidle0' })
+          // page.waitForNavigation({ waitUntil: 'networkidle0' })
         ]);
       } else {
         console.log(`Target page ${targetPageNumber} not found in visible range`);
@@ -2056,10 +2218,10 @@ async function get_make_drop_down() {
 }
 
 async function get_model_drop_down(selected_page = null, filters) {
-  if (obj_search_filter_param_csv?.allowed_models?.length < 1){
-     _models_drop_down = ["All Models"];
-    return _models_drop_down;
-  }
+  // if (obj_search_filter_param_csv?.allowed_models?.length < 1){
+  //    _models_drop_down = ["All Models"];
+  //   return _models_drop_down;
+  // }
   let randomWaitTime = getRandomNumber(2500, 3500);
   await selected_page.waitForTimeout(randomWaitTime);
   console.log("now selecting model drop down");
@@ -2524,7 +2686,8 @@ async function loadFromPage(res) {
       const currentYear = year_drop_down[year_drop_down_index];
 
 
-      if (obj_search_filter_param_csv?.allowed_models?.length > 0) {
+      // if (obj_search_filter_param_csv?.allowed_models?.length > 0) {
+      if (true) {
         filters_obj = {
         description: null,
         year: 0,
@@ -2814,8 +2977,9 @@ async function has_digital_formula(formula_page, selector) {
   
   while (retryCount < MAX_RETRIES) {
     try {
-      await formula_page.waitForNavigation({ waitUntil: 'networkidle0' });
-      
+      // await formula_page.waitForNavigation({ waitUntil: 'networkidle0' });
+        await formula_page.waitForTimeout(15000);
+      console.log('find selector');
       // Race between finding the selector and timing out
       const result = await Promise.race([
         // Option 1: Look for the digital formula (success case)
@@ -3173,6 +3337,7 @@ async function scrapDataFromList(listpage, container, buttons, i, data_arr) {
             combinedData = { ...container, ...scrap_detail };
           }
           let scrap_more_details = await scrapColorInfoData(id);
+          console.log('scrapColorInfoData details scraped: ',scrap_details);
           combinedData = { ...scrap_more_details, ...combinedData };
             // combinedData = { ...combinedData, ...scrap_more_details };
             // Alternative approach: Only add missing keys from scrap_more_details
@@ -3234,6 +3399,13 @@ const escapeCsvValue = (value) => {
 async function saveToExcel(dataArray, fileName = "paint/sheets/paint.csv") {
   if (!dataArray?.length) {
       return;
+  }
+  if(isTesting){
+    totalTestingCount--;
+    if(totalTestingCount<0){
+      console.log('For testing mode required thrust achieved');
+      return;
+    }
   }
   // const makeDropdown = await get_make_drop_down();
   const filePath = "paint/sheets/";
