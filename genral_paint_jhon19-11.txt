@@ -277,7 +277,7 @@ app.get("/loadurl", async (req, res) => {
     outputFilePath = req.query.outputFilePath;
 
     // Process year parameter for ranges
-    let year = req.query.year || '2027-1920';
+    let year = req.query.year || null;
     let end_year = null;
     let allowed_years = [];
     let allowed_makes = safeSplit(req.query.make);
@@ -510,11 +510,9 @@ async function uploadSingle(row_values_obj) {
   form.append("price", requestData.price);
   form.append("compare_price", requestData.compare_price);
   form.append("images[]", fs.createReadStream(image_path));
-  form.append("check_duplicates", 'true');
   // form.append("check_duplicates", requestData.check_duplicates);
   console.log("FormData contents:");
   const formDataObj = {};
-  console.log("check_duplicates", requestData.check_duplicates);
   console.log("models", requestData.models);
   console.log("all_models", requestData.all_models);
   console.log("alternative_codes", requestData.alternative_codes);
@@ -2776,12 +2774,9 @@ async function loadFromPage(res) {
       // }
       
         console.log(
-          "all models : ",
-          _models_drop_down
-        );
-        if(has_digital_formula(page,"#digital_formula")){
-
-        }
+        "all models : ",
+        _models_drop_down
+      );
       for (
         let adjusted_index = 1;
         adjusted_index <= _models_drop_down.length;
@@ -3054,7 +3049,7 @@ async function has_digital_formula(formula_page, selector) {
       // Max retries reached - wait 30 minutes and try again
       console.log(`Server is not responding. Waiting 30 minutes for server to revive...`);
       // await formula_page.waitForTimeout(1800000); // 30 minutes
-        await formula_page.waitForTimeout(900000);
+        await formula_page.waitForTimeout(15000);
         console.log("Timeout for 15 seconds loggin in again");
         // await formula_page.waitForTimeout(1800000);
         await recoverPage();
