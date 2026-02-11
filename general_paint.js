@@ -30,8 +30,8 @@ let current_filter_csv = "paint/current_filter_csv.csv";
 let search_filter_param_csv = "paint/search_filter_param_csv.csv";
 let all_completed_filter_csv = "paint/all_completed_filter_csv.csv";
 const API_URL =
-  // "https://localhost/scratchrepaircar/upload_shopify.php";
-  "https://development.hatinco.com/scratchrepaircar/upload_shopify.php";
+  // "https://localhost/vehicle-car-details/v2/create_product.php";
+  "https://development.hatinco.com/vehicle-car-details/v2/create_product.php";
 
 const MAX_RECURSION_DEPTH = 15;
 const MAX_VISITED_ENTRIES = 1500000;
@@ -535,7 +535,7 @@ async function uploadSingle(row_values_obj) {
         Accept: "*/*",
         Origin: "https://development.hatinco.com",
         Referer:
-          "https://development.hatinco.com/scratchrepaircar/upload_brand.php",
+          "https://development.hatinco.com/vehicle-car-details/v2/create_product.php",
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
       },
@@ -567,27 +567,41 @@ async function uploadSingle(row_values_obj) {
     await sleep(2000);
 
     // Extract image src
-    const src = parsedFiles?.[0]?.upload?.response?.image?.src || null;
-    const is_duplicate = parsedFiles?.[0]?.is_duplicate || false;
+    const uploadResult = parsedFiles?.[0]?.upload_result;
+    const hasErrors =
+      uploadResult?.response?.data?.productCreateMedia?.userErrors?.length > 0;
 
-    if (!src) {
-      const errorMsg = `server reported failure: ${JSON.stringify(
-        res.data
-      ).slice(0, 200)}`;
-      logFailure(image_path, errorMsg, requestData, {
-        status: res.status,
-        statusText: res.statusText,
-        data: res.data,
-      });
-      return {
-        success: false,
-        error: "Product duplicate",
-        imageSrc: null,
-      };
-    } else {
-      console.log("Single upload successful:", image_path, "->", src);
-      return { success: true, imageSrc: src,is_duplicate:is_duplicate, error: null };
+    if (hasErrors) {
+      logFailure(image_path, "Shopify media userErrors", requestData, res.data);
+      return { success: false, error: "Shopify media error", imageSrc: null };
     }
+
+    // SUCCESS even if image is null
+    return {
+      success: true,
+      imageSrc: res?.data?.files?.[0]?.shopify_img_url || null, // image is async
+      is_duplicate: parsedFiles?.[0]?.is_duplicate || false,
+    };
+    // const is_duplicate = parsedFiles?.[0]?.is_duplicate || false;
+
+    // if (!src) {
+    //   const errorMsg = `server reported failure: ${JSON.stringify(
+    //     res.data
+    //   ).slice(0, 200)}`;
+    //   logFailure(image_path, errorMsg, requestData, {
+    //     status: res.status,
+    //     statusText: res.statusText,
+    //     data: res.data,
+    //   });
+    //   return {
+    //     success: false,
+    //     error: "Product duplicate",
+    //     imageSrc: null,
+    //   };
+    // } else {
+    //   console.log("Single upload successful:", image_path, "->", src);
+    //   return { success: true, imageSrc: src,is_duplicate:is_duplicate, error: null };
+    // }
   } catch (err) {
     console.error("Single upload error for", image_path, err && err.message);
 
@@ -707,7 +721,7 @@ function generateCurlCommand(requestData, imagePath) {
   const headers = [
     '-H "Accept: */*"',
     '-H "Origin: https://development.hatinco.com"',
-    '-H "Referer: https://development.hatinco.com/scratchrepaircar/upload_brand.php"',
+    '-H "Referer: https://development.hatinco.com/vehicle-car-details/v2/create_product.php"',
     '-H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"',
   ].join(" \\\n  ");
 
@@ -2776,12 +2790,9 @@ async function loadFromPage(res) {
       // }
       
         console.log(
-          "all models : ",
-          _models_drop_down
-        );
-        if(has_digital_formula(page,"#digital_formula")){
-
-        }
+        "all models : ",
+        _models_drop_down
+      );
       for (
         let adjusted_index = 1;
         adjusted_index <= _models_drop_down.length;
@@ -3054,7 +3065,7 @@ async function has_digital_formula(formula_page, selector) {
       // Max retries reached - wait 30 minutes and try again
       console.log(`Server is not responding. Waiting 30 minutes for server to revive...`);
       // await formula_page.waitForTimeout(1800000); // 30 minutes
-        await formula_page.waitForTimeout(900000);
+        await formula_page.waitForTimeout(15000);
         console.log("Timeout for 15 seconds loggin in again");
         // await formula_page.waitForTimeout(1800000);
         await recoverPage();

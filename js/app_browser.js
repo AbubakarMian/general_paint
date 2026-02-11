@@ -4,7 +4,6 @@
         let uniqueRecords = 0;
         let duplicateRecords = 0;
         let pagesScraped = 0;
-        let total_records_processed = 0;
 
         // Initialize event listeners
         $(document).ready(function() {
@@ -161,12 +160,7 @@
         function addRecordToTable(records_arr) {
             records_arr.forEach(record => {
                 totalRecords++;
-                if(record.is_duplicate){
-                    duplicateRecords++;
-                }
-                else{
-                    uniqueRecords++;
-                }
+                uniqueRecords++;
             });
             
             addRowsToTable(records_arr, document.querySelector("#dataTable tbody"));
@@ -259,9 +253,6 @@
             if ($('#enableSolidEffect').is(':checked')) {
                 queryParams += `&solid_effect=${encodeURIComponent($('#solid_effect').val())}`;
             }
-            if ($('#checkDuplicates').is(':checked')) {
-                queryParams += `&check_duplicates=${encodeURIComponent($('#check_duplicates').val())}`;
-            }
 
             // Replace with your actual API endpoint
             eventSource = new EventSource(`http://localhost:5005/general_paint?${queryParams}`);
@@ -306,10 +297,6 @@
                             addRecordToTable(rowsData);
                         }
                     }
-                    else if(response.type === "processing_new_row"){
-                        total_records_processed++;
-                        $('#total_records_processed').text(total_records_processed);
-                    }
                     
                 } catch (error) {
                     console.error("Error parsing event data:", error);
@@ -348,7 +335,6 @@
             rowsData.reverse().forEach(rowData => { // Reverse to maintain order when prepending
                 const newRow = document.createElement("tr");
                 newRow.innerHTML = `
-                    <td>${rowData.is_duplicate ? 'Yes' : 'No'}</td>
                     <td>${rowData.familyId || ''}</td>
                     <td>${rowData.sid || ''}</td>
                     <td>${rowData.make || ''}</td>
@@ -430,9 +416,6 @@
             if ($('#enableSolidEffect').is(':checked')) {
                 queryParams += `&solid_effect=${encodeURIComponent($('#solid_effect').val())}`;
             }
-            if ($('#checkDuplicates').is(':checked')) {
-                queryParams += `&check_duplicates=true`;
-            }
 
             showLoadingModal("Opening browser and loading URL...");
 
@@ -475,7 +458,7 @@
         });
 
         document.getElementById('stopButton').addEventListener('click', async () => {
-            // $("#startButton").css('display', 'inline-block');
+            $("#startButton").css('display', 'inline-block');
             $("#stopButton").css('display', 'none');
 
             if (eventSource) {
